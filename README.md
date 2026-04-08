@@ -55,8 +55,12 @@ docs/
 ## What Exists Today
 
 - A minimal Next.js App Router project shell
-- API route placeholders for the agreed MVP endpoints
-- Shared helper modules for env, errors, fingerprint, Redis, and Supabase
+- Implemented seller lifecycle routes:
+  - `POST /api/v1/sellers/register`
+  - `POST /api/v1/sellers/heartbeat`
+  - `POST /api/v1/sellers/offline`
+- Placeholder job routes for `quote`, `verify`, `start`, `complete`, `fail`, and polling
+- Shared helper modules for env, errors, fingerprint, Redis, Supabase, and seller request parsing
 - Initial Supabase migration with `payment_id` support
 - A lightweight landing page describing the skeleton
 
@@ -114,7 +118,7 @@ npm run typecheck
 
 Continue with Phase 2 from [docs/development-order(swen).md](docs/development-order(swen).md):
 
-1. Implement seller register / heartbeat / offline
-2. Wire the migration into Supabase
-3. Fill in `quote`
-4. Fill in mock `verify`
+1. Wire the migration into Supabase
+2. Fill in `quote`
+3. Fill in mock `verify`
+4. Add the first seller worker script

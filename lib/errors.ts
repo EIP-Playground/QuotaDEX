@@ -13,6 +13,30 @@ export function errorResponse(
   return NextResponse.json(payload, { status });
 }
 
+export function badRequestResponse(
+  error: string,
+  code = "BAD_REQUEST",
+  details?: Record<string, unknown>
+): NextResponse<ErrorPayload> {
+  return errorResponse(400, { error, code, details });
+}
+
+export function notFoundResponse(
+  error: string,
+  code = "NOT_FOUND",
+  details?: Record<string, unknown>
+): NextResponse<ErrorPayload> {
+  return errorResponse(404, { error, code, details });
+}
+
+export function internalServerErrorResponse(
+  error = "Internal Server Error",
+  code = "INTERNAL_SERVER_ERROR",
+  details?: Record<string, unknown>
+): NextResponse<ErrorPayload> {
+  return errorResponse(500, { error, code, details });
+}
+
 export function notImplementedResponse(
   route: string,
   description: string
