@@ -18,9 +18,17 @@ Before writing code, read these documents in order:
 Current delivery summary:
 
 - Current phase: `Phase 3 - quote`
-- Progress: `0/6 done`
-- Current step: `Step 1` validate `buyer_id / capability / prompt`
+- Current step: `Step 1/6` validate `buyer_id / capability / prompt`
 - Next milestone: return a valid `402 Payment Required` response
+
+## Finished Phases
+
+- `Phase 0 - project skeleton`
+  - `Next.js`, `app/api`, `lib`, `env`
+- `Phase 1 - data layer`
+  - `Supabase`, `sellers`, `jobs`, `events`, `migration`
+- `Phase 2 - seller lifecycle`
+  - `register`, `heartbeat`, `offline`
 
 Full phase path, step progress, and unfinished tasks:
 
