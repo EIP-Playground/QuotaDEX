@@ -76,17 +76,23 @@ docs/
 - `docs/*`
   Product spec, MVP rules, and development sequence.
 
-## What Exists Today
+## Current Implementation
 
-- A minimal Next.js App Router project shell
-- Implemented seller lifecycle routes:
+- A minimal `Next.js App Router` gateway application is in place.
+- Seller lifecycle routes are implemented:
   - `POST /api/v1/sellers/register`
   - `POST /api/v1/sellers/heartbeat`
   - `POST /api/v1/sellers/offline`
-- Placeholder job routes for `quote`, `verify`, `start`, `complete`, `fail`, and polling
-- Shared helper modules for env, errors, fingerprint, Redis, Supabase, and seller request parsing
-- Initial Supabase migration with `payment_id` support
-- A lightweight landing page describing the skeleton
+- Job routes for `quote`, `verify`, `start`, `complete`, `fail`, and polling exist as route files, but most are still scaffolds.
+- Shared helpers already exist for:
+  - env loading
+  - error responses
+  - fingerprint generation
+  - Redis access
+  - Supabase access
+  - seller request parsing
+- The initial Supabase migration is in place, including `payment_id`.
+- A minimal landing page exists so the app can build and run locally.
 
 ## Environment Variables
 
