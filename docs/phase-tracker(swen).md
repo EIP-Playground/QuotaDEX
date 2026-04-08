@@ -15,6 +15,14 @@
 - `Phase 2` 已完成
 - `Phase 3` 下一步开始
 
+当前步骤进度：
+
+- `Phase 0`: `6/6` steps done
+- `Phase 1`: `6/6` steps done
+- `Phase 2`: `4/4` steps done
+- `Phase 3`: `0/6` steps done
+- 当前步骤：`Phase 3 / Step 1` `校验 buyer_id / capability / prompt`
+
 一句话：
 
 - 仓库已经完成“项目骨架 + 数据层 + Seller 生命周期接口”
@@ -74,13 +82,39 @@
 | `Phase 8` | `LATER` | `buyer-sdk`, `seller-sdk`, `封装`, `复用`, `接入库` |
 | `Phase 9` | `LATER` | `Dashboard`, `events`, `timeout`, `refund`, `retry` |
 
-## 5. 各阶段说明
+## 5. 步骤进度总览
+
+| Phase | 状态 | 步骤进度 | 当前步骤 |
+|------|------|------|------|
+| `Phase 0` | `DONE` | `6/6 done` | `completed` |
+| `Phase 1` | `DONE` | `6/6 done` | `completed` |
+| `Phase 2` | `DONE` | `4/4 done` | `completed` |
+| `Phase 3` | `NEXT` | `0/6 done` | `Step 1: 校验 buyer_id / capability / prompt` |
+| `Phase 4` | `LATER` | `0/6 done` | `not started` |
+| `Phase 5` | `LATER` | `0/6 done` | `not started` |
+| `Phase 6` | `LATER` | `0/4 done` | `not started` |
+| `Phase 7` | `LATER` | `0/5 done` | `not started` |
+| `Phase 8` | `LATER` | `0/2 done` | `not started` |
+| `Phase 9` | `LATER` | `0/4 done` | `not started` |
+
+## 6. 各阶段说明
 
 ### Phase 0：项目骨架
 
 状态：`DONE`
 
 关键词：`Next.js` `app/api` `lib` `env` `README`
+
+步骤进度：`6/6 done`
+
+步骤清单：
+
+- `[x]` 初始化 `Next.js` 项目
+- `[x]` 建立 `app/api/v1` 目录
+- `[x]` 建立 `lib` 目录
+- `[x]` 建立 `supabase/migrations` 目录
+- `[x]` 建立基础环境变量管理
+- `[x]` 建立 README 与项目入口说明
 
 目标：
 
@@ -101,6 +135,17 @@
 
 关键词：`Supabase` `sellers` `jobs` `events` `migration`
 
+步骤进度：`6/6 done`
+
+步骤清单：
+
+- `[x]` 创建 `sellers` 表
+- `[x]` 创建 `jobs` 表
+- `[x]` 创建 `events` 表
+- `[x]` 为 `jobs` 加上 `payment_id`
+- `[x]` 为 `jobs.tx_hash` 加唯一约束
+- `[x]` 加入 Realtime publication 迁移逻辑
+
 目标：
 
 - 建立正式状态源
@@ -120,6 +165,15 @@
 
 关键词：`register` `heartbeat` `offline` `校验` `seller state`
 
+步骤进度：`4/4 done`
+
+步骤清单：
+
+- `[x]` 实现 `POST /api/v1/sellers/register`
+- `[x]` 实现 `POST /api/v1/sellers/heartbeat`
+- `[x]` 实现 `POST /api/v1/sellers/offline`
+- `[x]` 接入 seller 请求体校验和错误返回
+
 目标：
 
 - 先让平台中“有卖家存在并可保活”
@@ -137,6 +191,19 @@
 状态：`NEXT`
 
 关键词：`quote` `匹配卖家` `reserved` `fingerprint` `402`
+
+步骤进度：`0/6 done`
+
+当前步骤：`Step 1` `校验 buyer_id / capability / prompt`
+
+步骤清单：
+
+- `[ ]` Step 1: 校验 `buyer_id / capability / prompt`
+- `[ ]` Step 2: 查找能力匹配且 `idle` 的 seller
+- `[ ]` Step 3: 用数据库原子更新将 seller 置为 `reserved`
+- `[ ]` Step 4: 生成 `fingerprint`
+- `[ ]` Step 5: Redis 写入 `quote:{payment_id}`
+- `[ ]` Step 6: 返回 `402 + payment_id + seller + amount`
 
 目标：
 
@@ -163,6 +230,17 @@
 
 关键词：`verify` `fingerprint` `tx_hash` `payment_id` `job`
 
+步骤进度：`0/6 done`
+
+步骤清单：
+
+- `[ ]` Step 1: 重算 `fingerprint`
+- `[ ]` Step 2: 查 Redis 中的 quote 临时上下文
+- `[ ]` Step 3: Mock 校验 `tx_hash`
+- `[ ]` Step 4: 创建正式 `job`
+- `[ ]` Step 5: 建立 `payment_id -> job_id` 映射
+- `[ ]` Step 6: 将 seller 状态更新为 `busy`
+
 目标：
 
 - 在不接真实链上的情况下，把支付后正式建单跑通
@@ -181,6 +259,17 @@
 状态：`LATER`
 
 关键词：`seller worker` `Realtime` `start` `complete` `fail`
+
+步骤进度：`0/6 done`
+
+步骤清单：
+
+- `[ ]` Step 1: 启动前本地自检
+- `[ ]` Step 2: 调用 `register`
+- `[ ]` Step 3: 订阅属于自己的 job
+- `[ ]` Step 4: 调用 `start`
+- `[ ]` Step 5: 执行 handler
+- `[ ]` Step 6: 调用 `complete` 或 `fail`
 
 目标：
 
@@ -201,6 +290,15 @@
 
 关键词：`buyer demo` `quote` `mock pay` `verify` `wait result`
 
+步骤进度：`0/4 done`
+
+步骤清单：
+
+- `[ ]` Step 1: 调 `quote`
+- `[ ]` Step 2: 模拟支付
+- `[ ]` Step 3: 调 `verify`
+- `[ ]` Step 4: 订阅并等待结果
+
 目标：
 
 - 让 Buyer 侧有一个最小闭环脚本
@@ -218,6 +316,16 @@
 
 关键词：`Escrow` `deposit` `receipt` `release` `refund`
 
+步骤进度：`0/5 done`
+
+步骤清单：
+
+- `[ ]` Step 1: 实现 Escrow 合约
+- `[ ]` Step 2: 接入 `deposit(payment_id, seller, amount)`
+- `[ ]` Step 3: 接真实 receipt 校验
+- `[ ]` Step 4: 接入 `release`
+- `[ ]` Step 5: 接入 `refund`
+
 目标：
 
 - 把 Mock 支付替换成真实链上流程
@@ -234,6 +342,13 @@
 
 关键词：`buyer-sdk` `seller-sdk` `封装` `复用` `接入库`
 
+步骤进度：`0/2 done`
+
+步骤清单：
+
+- `[ ]` Step 1: 提炼 `buyer-sdk`
+- `[ ]` Step 2: 提炼 `seller-sdk`
+
 目标：
 
 - 把已经跑通的流程提炼为 `buyer-sdk` 和 `seller-sdk`
@@ -249,6 +364,15 @@
 
 关键词：`Dashboard` `events` `timeout` `refund` `retry`
 
+步骤进度：`0/4 done`
+
+步骤清单：
+
+- `[ ]` Step 1: Dashboard 事件流
+- `[ ]` Step 2: seller 状态展示
+- `[ ]` Step 3: 超时处理
+- `[ ]` Step 4: 退款与重试
+
 目标：
 
 - 加展示、监控和稳定性
@@ -260,7 +384,7 @@
 3. 超时处理
 4. 退款与重试
 
-## 6. 现在最该做什么
+## 7. 现在最该做什么
 
 如果你现在准备继续开发，默认动作就是：
 
@@ -269,7 +393,7 @@
 3. 按本文件进入 `Phase 3`
 4. 优先实现 `POST /api/v1/jobs/quote`
 
-## 7. 不该做什么
+## 8. 不该做什么
 
 在 `Phase 3` 之前，不建议提前展开：
 
@@ -283,7 +407,7 @@
 
 - 这些都不是当前最短闭环的阻塞项
 
-## 8. 一句话总结
+## 9. 一句话总结
 
 当前仓库的位置是：
 

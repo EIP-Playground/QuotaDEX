@@ -15,18 +15,16 @@ Before writing code, read these documents in order:
 
 ## Current Phase
 
-Current delivery status:
+Current delivery summary:
 
-- `Phase 0` project skeleton: done
-  Keywords: `Next.js` `app/api` `lib` `env`
-- `Phase 1` data layer: done
-  Keywords: `Supabase` `sellers` `jobs` `events`
-- `Phase 2` seller lifecycle routes: done
-  Keywords: `register` `heartbeat` `offline`
-- `Phase 3` quote: next
-  Keywords: `match seller` `reserved` `fingerprint` `402`
+- Current phase: `Phase 3 - quote`
+- Progress: `0/6 done`
+- Current step: `Step 1` validate `buyer_id / capability / prompt`
+- Next milestone: return a valid `402 Payment Required` response
 
-For the clearest phase view, open [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md).
+Full phase path, step progress, and unfinished tasks:
+
+- [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md)
 
 ## Current Skeleton
 
