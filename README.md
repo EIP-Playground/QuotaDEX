@@ -11,6 +11,22 @@ Before writing code, read these documents in order:
 1. [docs/project/PieBazaar - QuotaDEX 技术规格说明书 v3.0 (Final).md](docs/project/PieBazaar%20-%20QuotaDEX%20%E6%8A%80%E6%9C%AF%E8%A7%84%E6%A0%BC%E8%AF%B4%E6%98%8E%E4%B9%A6%20v3.0%20%28Final%29.md)
 2. [docs/mvp-rules(swen).md](docs/mvp-rules(swen).md)
 3. [docs/development-order(swen).md](docs/development-order(swen).md)
+4. [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md)
+
+## Current Phase
+
+Current delivery status:
+
+- `Phase 0` project skeleton: done
+  Keywords: `Next.js` `app/api` `lib` `env`
+- `Phase 1` data layer: done
+  Keywords: `Supabase` `sellers` `jobs` `events`
+- `Phase 2` seller lifecycle routes: done
+  Keywords: `register` `heartbeat` `offline`
+- `Phase 3` quote: next
+  Keywords: `match seller` `reserved` `fingerprint` `402`
+
+For the clearest phase view, open [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md).
 
 ## Current Skeleton
 
@@ -116,9 +132,9 @@ npm run typecheck
 
 ## Recommended Next Step
 
-Continue with Phase 2 from [docs/development-order(swen).md](docs/development-order(swen).md):
+Continue with `Phase 3` from [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md) and [docs/development-order(swen).md](docs/development-order(swen).md):
 
-1. Wire the migration into Supabase
-2. Fill in `quote`
-3. Fill in mock `verify`
-4. Add the first seller worker script
+1. Fill in `quote`
+2. Fill in mock `verify`
+3. Add the first seller worker script
+4. Add the first buyer demo script
