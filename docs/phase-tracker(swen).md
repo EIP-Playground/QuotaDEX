@@ -6,37 +6,9 @@
 > - `docs/mvp-rules(swen).md`
 > - `docs/development-order(swen).md`
 
-## 1. 当前所处阶段
+当前：`Phase 7 / Step 1` `实现 Escrow 合约`
 
-当前状态：
-
-- `Phase 0` 已完成
-- `Phase 1` 已完成
-- `Phase 2` 已完成
-- `Phase 3` 已完成
-- `Phase 4` 已完成
-- `Phase 5` 已完成
-- `Phase 6` 已完成
-- `Phase 7` 下一步开始
-
-当前步骤进度：
-
-- `Phase 0`: `6/6` steps done
-- `Phase 1`: `6/6` steps done
-- `Phase 2`: `4/4` steps done
-- `Phase 3`: `6/6` steps done
-- `Phase 4`: `6/6` steps done
-- `Phase 5`: `6/6` steps done
-- `Phase 6`: `4/4` steps done
-- `Phase 7`: `0/5` steps done
-- 当前步骤：`Phase 7 / Step 1` `实现 Escrow 合约`
-
-一句话：
-
-- 仓库已经完成“项目骨架 + 数据层 + Seller 生命周期接口 + quote + verify(Mock) + Seller worker + Buyer demo”
-- 现在正式进入 `Real chain + Escrow` 实现阶段
-
-## 2. 路径图
+## 1. 路径图
 
 ```text
 [Phase 0 项目骨架 | Next.js / app-api / lib / env]   DONE
@@ -69,43 +41,13 @@
 [Phase 9 Dashboard + Stability | 事件流 / 超时 / 退款 / 重试]
 ```
 
-## 3. 状态图例
+## 2. 状态图例
 
 - `DONE`：已经完成并进入仓库主分支
 - `NEXT`：下一步优先级最高，应立即开始
 - `LATER`：后续阶段，不应提前展开
 
-## 4. 关键词总览
-
-| Phase | 状态 | 关键词 |
-|------|------|------|
-| `Phase 0` | `DONE` | `Next.js`, `app/api`, `lib`, `env`, `README` |
-| `Phase 1` | `DONE` | `Supabase`, `sellers`, `jobs`, `events`, `migration` |
-| `Phase 2` | `DONE` | `register`, `heartbeat`, `offline`, `校验`, `seller state` |
-| `Phase 3` | `DONE` | `quote`, `匹配卖家`, `reserved`, `fingerprint`, `402` |
-| `Phase 4` | `DONE` | `verify`, `fingerprint`, `tx_hash`, `payment_id`, `job` |
-| `Phase 5` | `DONE` | `seller worker`, `Realtime`, `start`, `complete`, `fail` |
-| `Phase 6` | `DONE` | `buyer demo`, `quote`, `mock pay`, `verify`, `wait result` |
-| `Phase 7` | `NEXT` | `Escrow`, `deposit`, `receipt`, `release`, `refund` |
-| `Phase 8` | `LATER` | `buyer-sdk`, `seller-sdk`, `封装`, `复用`, `接入库` |
-| `Phase 9` | `LATER` | `Dashboard`, `events`, `timeout`, `refund`, `retry` |
-
-## 5. 步骤进度总览
-
-| Phase | 状态 | 步骤进度 | 当前步骤 |
-|------|------|------|------|
-| `Phase 0` | `DONE` | `6/6 done` | `completed` |
-| `Phase 1` | `DONE` | `6/6 done` | `completed` |
-| `Phase 2` | `DONE` | `4/4 done` | `completed` |
-| `Phase 3` | `DONE` | `6/6 done` | `completed` |
-| `Phase 4` | `DONE` | `6/6 done` | `completed` |
-| `Phase 5` | `DONE` | `6/6 done` | `completed` |
-| `Phase 6` | `DONE` | `4/4 done` | `completed` |
-| `Phase 7` | `NEXT` | `0/5 done` | `Step 1: 实现 Escrow 合约` |
-| `Phase 8` | `LATER` | `0/2 done` | `not started` |
-| `Phase 9` | `LATER` | `0/4 done` | `not started` |
-
-## 6. 各阶段说明
+## 3. 各阶段说明
 
 ### Phase 0：项目骨架
 
@@ -392,7 +334,7 @@
 3. 超时处理
 4. 退款与重试
 
-## 7. 现在最该做什么
+## 4. 现在最该做什么
 
 如果你现在准备继续开发，默认动作就是：
 
@@ -401,7 +343,7 @@
 3. 按本文件进入 `Phase 7`
 4. 优先实现 Escrow 合约和真实 receipt 校验
 
-## 8. 不该做什么
+## 5. 不该做什么
 
 在 `Phase 7` 主链路跑通之前，不建议提前展开：
 
@@ -415,7 +357,7 @@
 
 - 这些都不是当前最短闭环的阻塞项
 
-## 9. 一句话总结
+## 6. 一句话总结
 
 当前仓库的位置是：
 
