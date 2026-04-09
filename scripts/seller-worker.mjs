@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const DEFAULT_GATEWAY_BASE_URL = "http://localhost:3000";
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
+const DEFAULT_PENDING_JOB_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_SELLER_ID = "seller-demo";
 const DEFAULT_CAPABILITY = "llama-3";
 const DEFAULT_PRICE_PER_TASK = "0.01";
@@ -19,11 +20,15 @@ function requireEnv(name) {
 }
 
 function getWorkerConfig() {
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+
   return {
     gatewayBaseUrl:
       process.env.GATEWAY_BASE_URL?.trim() || DEFAULT_GATEWAY_BASE_URL,
     supabaseUrl: requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    supabaseAnonKey: requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    supabaseKey,
     sellerId: process.env.SELLER_ID?.trim() || DEFAULT_SELLER_ID,
     capability: process.env.SELLER_CAPABILITY?.trim() || DEFAULT_CAPABILITY,
     pricePerTask:
@@ -31,6 +36,11 @@ function getWorkerConfig() {
     heartbeatIntervalMs: Number.parseInt(
       process.env.SELLER_HEARTBEAT_INTERVAL_MS ??
         `${DEFAULT_HEARTBEAT_INTERVAL_MS}`,
+      10
+    ),
+    pendingJobPollIntervalMs: Number.parseInt(
+      process.env.SELLER_PENDING_JOB_POLL_INTERVAL_MS ??
+        `${DEFAULT_PENDING_JOB_POLL_INTERVAL_MS}`,
       10
     )
   };
@@ -168,6 +178,30 @@ async function handleJob(config, activeJobs, job) {
   }
 }
 
+async function fetchPendingJobs(supabase, sellerId) {
+  const { data, error } = await supabase
+    .from("jobs")
+    .select("id, status, payload")
+    .eq("seller_id", sellerId)
+    .eq("status", "paid")
+    .order("created_at", { ascending: true })
+    .limit(20);
+
+  if (error) {
+    throw new Error(`Failed to fetch pending jobs: ${error.message}`);
+  }
+
+  return data ?? [];
+}
+
+async function processPendingJobs(config, supabase, activeJobs) {
+  const pendingJobs = await fetchPendingJobs(supabase, config.sellerId);
+
+  for (const job of pendingJobs) {
+    await handleJob(config, activeJobs, job);
+  }
+}
+
 async function main() {
   const config = getWorkerConfig();
   const activeJobs = new Set();
@@ -193,7 +227,7 @@ async function main() {
     }
   }, config.heartbeatIntervalMs);
 
-  const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+  const supabase = createClient(config.supabaseUrl, config.supabaseKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false
@@ -216,11 +250,26 @@ async function main() {
     )
     .subscribe((status) => {
       console.log(`[worker] realtime status: ${status}`);
+
+      if (status === "SUBSCRIBED") {
+        void processPendingJobs(config, supabase, activeJobs).catch((error) => {
+          console.error("[worker] failed to process pending jobs after subscribe", error);
+        });
+      }
     });
+
+  const pendingJobPollTimer = setInterval(async () => {
+    try {
+      await processPendingJobs(config, supabase, activeJobs);
+    } catch (error) {
+      console.error("[worker] pending job poll failed", error);
+    }
+  }, config.pendingJobPollIntervalMs);
 
   async function shutdown(signal) {
     console.log(`[worker] shutting down on ${signal}`);
     clearInterval(heartbeatTimer);
+    clearInterval(pendingJobPollTimer);
 
     try {
       await gatewayPost(config.gatewayBaseUrl, "/api/v1/sellers/offline", {

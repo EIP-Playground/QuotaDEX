@@ -17,7 +17,11 @@ Minimal Phase 5 demo worker:
 - registers the seller through Gateway APIs
 - sends heartbeat updates
 - subscribes to Supabase Realtime for jobs assigned to that seller
+- polls for existing `paid` jobs as a fallback if Realtime misses an insert
 - reports `start / complete / fail` back to the Gateway
+
+For the local controlled demo, the worker prefers `SUPABASE_SERVICE_ROLE_KEY` when it is present.
+This avoids depending on anon-key table read grants during testing.
 
 Run it with Node 20+:
 
@@ -32,6 +36,7 @@ Optional local overrides:
 - `SELLER_CAPABILITY` default: `llama-3`
 - `SELLER_PRICE_PER_TASK` default: `0.01`
 - `SELLER_HEARTBEAT_INTERVAL_MS` default: `20000`
+- `SELLER_PENDING_JOB_POLL_INTERVAL_MS` default: `5000`
 
 Note:
 

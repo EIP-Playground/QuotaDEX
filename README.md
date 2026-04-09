@@ -22,6 +22,8 @@ Current delivery summary:
 - Current phase: `Phase 8 - SDK`
 - Current step: `Step 1/2` extract `buyer-sdk`
 - Next milestone: package the buyer happy path into a reusable SDK entry
+- Latest checkpoint: `Mock E2E passed`
+  - `quote -> verify(mock) -> seller done -> buyer final result`
 
 ## Finished Phases
 
@@ -41,6 +43,8 @@ Current delivery summary:
   - `quote`, mock pay, `verify`, Realtime wait, polling fallback
 - `Phase 7 - real chain + Escrow`
   - Escrow contract, real `deposit`, receipt validation, `release`, `refund`
+- `Mock E2E checkpoint`
+  - local Gateway + Supabase + Redis + seller worker + buyer demo passed end to end
 
 ## Full Tracker
 

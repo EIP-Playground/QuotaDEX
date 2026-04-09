@@ -8,6 +8,9 @@
 
 当前：`Phase 8 / Step 1` `提炼 buyer-sdk`
 
+最近验收：`Mock E2E passed`
+- `quote -> verify(mock) -> seller done -> buyer final result`
+
 ## 1. 路径图
 
 ```text
@@ -304,6 +307,12 @@
 目标：
 
 - 把已经跑通的流程提炼为 `buyer-sdk` 和 `seller-sdk`
+
+进入 Phase 8 前的最新验收结果：
+
+- 本地 `Mock E2E` 已通过
+- `buyer-demo` 可以拿到最终结果
+- `seller-worker` 已补上 Realtime missed insert fallback
 
 注意：
 
