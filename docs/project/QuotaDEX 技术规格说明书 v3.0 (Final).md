@@ -1,4 +1,4 @@
-# PieBazaar - QuotaDEX 技术规格说明书 v3.0 (Final)
+# QuotaDEX 技术规格说明书 v3.0 (Final)
 
 > **版本**: v3.0 — 整合 PRD v1.0/v2.0 + 技术 Spec v2.0 + 评审决策  
 > **日期**: 2026-04-07  
@@ -8,8 +8,11 @@
 
 ## 1. 产品概述
 
-- **产品名称**：PieBazaar - QuotaDEX（派巴扎）
+- **产品名称**：QuotaDEX
+- **所属平台**：PieBazaar（规划中的 Agent Marketplace）
+- **PieBazaar 定位**：一个用于展示 Accountable Agent Commerce Layer 的 Agent Marketplace
 - **产品定位**：基于 API Gateway 模式构建的"闲置 AI 额度"交易撮合平台
+- **当前关系**：QuotaDEX 是未来 PieBazaar 中规划的第一个垂直服务
 - **核心愿景**：通过 Hybrid P2P 与无缝的微支付拦截，建立 Agent to Agent (A2A) 的算力二级市场
 - **买方受众**：需要低门槛、按次调用高级大模型能力的 Agent 开发者
 - **卖方受众**：拥有闲置大模型 API 额度，希望通过极简部署被动变现的用户
@@ -18,7 +21,7 @@
 
 ## 2. 系统架构与选型
 
-PieBazaar 采用轻量化 Web2.5 混合架构，核心设计理念为：**人类旁观，机器交易**。
+QuotaDEX 采用轻量化 Web2.5 混合架构，核心设计理念为：**人类旁观，机器交易**。
 
 | 层级 | 选型 | 职责 |
 |------|------|------|
@@ -75,7 +78,7 @@ export const buyerWallet = createWalletClient({
 ### 流程概览
 
 ```
-Buyer Agent                   Bazaar Gateway                    Escrow Contract               Seller Agent
+Buyer Agent                 QuotaDEX Gateway                  Escrow Contract               Seller Agent
     │                              │                                  │                           │
     │ 1. POST /quote               │                                  │                           │
     │─────────────────────────────►│                                  │                           │
@@ -107,19 +110,19 @@ Buyer Agent                   Bazaar Gateway                    Escrow Contract 
 
 ### 各阶段详解
 
-**阶段一（发现与匹配）**：买方 Agent 向 Bazaar 发起能力查询，Bazaar 在 Supabase `sellers` 表中匹配状态为 `idle` 的卖方节点。
+**阶段一（发现与匹配）**：买方 Agent 向 QuotaDEX 发起能力查询，QuotaDEX 在 Supabase `sellers` 表中匹配状态为 `idle` 的卖方节点。
 
-**阶段二（状态预留）**：匹配成功后，Bazaar 通过 Redis 原子锁将卖方状态从 `idle` → `reserved`（TTL 30s）。
+**阶段二（状态预留）**：匹配成功后，QuotaDEX 通过 Redis 原子锁将卖方状态从 `idle` → `reserved`（TTL 30s）。
 
-**阶段三（拦截与 402）**：Bazaar 向买方返回 `HTTP 402 Payment Required`，附带收款托管合约地址、金额、指纹。
+**阶段三（拦截与 402）**：QuotaDEX 向买方返回 `HTTP 402 Payment Required`，附带收款托管合约地址、金额、指纹。
 
 **阶段四（买方支付与客户端确认）**：买方 Agent 调用 PYUSD 合约向托管合约地址转账。**关键设计：买方 SDK 内部等待 `eth_getTransactionReceipt` 确认交易成功后，才提交 TxHash 到网关**，网关无需承担等待确认的延迟。
 
-**阶段五（核销与派单）**：Bazaar 通过 RPC 二次校验 TxHash 的 receipt（收款方为托管合约地址、金额正确），INSERT job 到 Supabase（`tx_hash` UNIQUE 约束防双花），状态为 `paid`。
+**阶段五（核销与派单）**：QuotaDEX 通过 RPC 二次校验 TxHash 的 receipt（收款方为托管合约地址、金额正确），INSERT job 到 Supabase（`tx_hash` UNIQUE 约束防双花），状态为 `paid`。
 
 **阶段六（代跑）**：卖方通过 Supabase Realtime 监听到 `jobs` INSERT，将状态 UPDATE 为 `running`，调用本地大模型 API 生成结果，UPDATE 为 `done` 并回填 `result`。
 
-**阶段七（交付与放款）**：买方通过 Realtime 订阅拿到 `done` 结果。Bazaar 后台确认 `done` 后触发托管合约放款到卖方钱包。
+**阶段七（交付与放款）**：买方通过 Realtime 订阅拿到 `done` 结果。QuotaDEX 后台确认 `done` 后触发托管合约放款到卖方钱包。
 
 ### 超时与容错（Happy Path 简化版）
 
@@ -138,8 +141,8 @@ MVP 采用**平台托管合约**模式，而非买方直付卖方。
 
 ```
 1. 买方 → PYUSD 转账至 Escrow 合约 (附带 job 标识)
-2. 卖方完成任务 → Bazaar 调用 Escrow.release(jobId, sellerAddr)
-3. 卖方超时/失败 → 3 次重试无响应 → Bazaar 调用 Escrow.refund(jobId, buyerAddr)
+2. 卖方完成任务 → QuotaDEX 调用 Escrow.release(jobId, sellerAddr)
+3. 卖方超时/失败 → 3 次重试无响应 → QuotaDEX 调用 Escrow.refund(jobId, buyerAddr)
 ```
 
 ### 4.2 合约接口（MVP 简化版）
@@ -150,8 +153,8 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract PieBazaarEscrow {
-    address public gateway;          // Bazaar 网关地址，拥有放款/退款权限
+contract QuotaDEXEscrow {
+    address public gateway;          // QuotaDEX 网关地址，拥有放款/退款权限
     IERC20  public paymentToken;     // PYUSD 合约
 
     enum JobState { Funded, Released, Refunded }
@@ -406,7 +409,7 @@ contract PieBazaarEscrow {
 ### 7.1 Buyer Agent SDK 内部流转
 
 ```typescript
-// @piebazaar/buyer-sdk
+// @quotadex/buyer-sdk
 async function request(prompt: string, capability: string): Promise<JobResult> {
   // 1. 询价 → 拿到 402 + fingerprint + escrow info
   const quote = await fetch('/api/v1/jobs/quote', { body: { buyer_id, capability, prompt } });
@@ -443,7 +446,7 @@ async function request(prompt: string, capability: string): Promise<JobResult> {
 ### 7.2 Seller Agent SDK 内部流转
 
 ```typescript
-// @piebazaar/seller-sdk — 无头常驻进程
+// @quotadex/seller-sdk — 无头常驻进程
 async function serve(capability: string, handler: (prompt: string) => Promise<string>) {
   // 1. 上线注册
   await fetch('/api/v1/sellers/register', { body: { seller_id, capability, price_per_task, wallet } });
@@ -506,7 +509,7 @@ async function serve(capability: string, handler: (prompt: string) => Promise<st
 | `GATEWAY_SALT` | 指纹哈希的盐值 | 随机 32 字节 hex |
 | `KITE_RPC_URL` | Kite AI RPC 地址 | `https://rpc-testnet.gokite.ai` |
 | `PYUSD_CONTRACT_ADDRESS` | PYUSD 代币合约地址 | 需从 Kite 链浏览器获取 |
-| `ESCROW_CONTRACT_ADDRESS` | PieBazaar 托管合约地址 | 部署后填入 |
+| `ESCROW_CONTRACT_ADDRESS` | QuotaDEX 托管合约地址 | 部署后填入 |
 | `GATEWAY_PRIVATE_KEY` | 网关 EOA 私钥（托管合约操作） | — |
 
 ---
@@ -529,10 +532,10 @@ async function serve(capability: string, handler: (prompt: string) => Promise<st
 
 | 任务 | 产出 |
 |------|------|
-| 编写 + 部署 PieBazaarEscrow 合约（Testnet） | 托管合约上线 |
+| 编写 + 部署 QuotaDEXEscrow 合约（Testnet） | 托管合约上线 |
 | 实现链上 TxHash 校验（PYUSD Transfer log 解析） | verify 真实可用 |
-| 开发 @piebazaar/buyer-sdk | npm 包 |
-| 开发 @piebazaar/seller-sdk | npm 包 |
+| 开发 @quotadex/buyer-sdk | npm 包 |
+| 开发 @quotadex/seller-sdk | npm 包 |
 | 编写 Demo Buyer Agent + Demo Seller Agent | 示例 Agent |
 | 端到端联调：真实链上 + 真实模型 | 联调通过 |
 

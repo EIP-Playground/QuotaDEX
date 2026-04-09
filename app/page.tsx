@@ -13,7 +13,7 @@ const docs = [
   {
     title: "Technical Spec",
     description: "Authoritative product and protocol specification.",
-    path: "docs/project/PieBazaar - QuotaDEX 技术规格说明书 v3.0 (Final).md"
+    path: "docs/project/QuotaDEX 技术规格说明书 v3.0 (Final).md"
   },
   {
     title: "MVP Rules",
@@ -34,10 +34,9 @@ export default function HomePage() {
         <p className="eyebrow">QuotaDEX</p>
         <h1>A gateway skeleton for the MVP marketplace.</h1>
         <p className="lead">
-          This repository now contains the first-stage project skeleton for the
-          Gateway, shared libraries, and Supabase schema. The business flow is
-          still document-first, but the code layout is ready for Phase 0 and
-          Phase 1 implementation work.
+          QuotaDEX is the first vertical service planned for the future
+          PieBazaar marketplace. PieBazaar is positioned as an Agent
+          Marketplace that showcases the Accountable Agent Commerce Layer.
         </p>
       </section>
 
@@ -47,8 +46,8 @@ export default function HomePage() {
           <ul>
             <li>Set up the Next.js gateway application.</li>
             <li>Define shared env, Redis, Supabase, and fingerprint helpers.</li>
-            <li>Create API route placeholders for seller and job workflows.</li>
-            <li>Land the first Supabase migration for sellers, jobs, and events.</li>
+            <li>Run the QuotaDEX buyer and seller happy path end to end.</li>
+            <li>Prepare the next phase: real chain and Escrow integration.</li>
           </ul>
         </article>
 

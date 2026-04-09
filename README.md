@@ -2,13 +2,15 @@
 
 QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP uses a Gateway + Supabase + Redis + Escrow design so AI agents can buy and sell idle model quota through HTTP 402 interception and Web3 micro-payments on Kite AI.
 
+PieBazaar is the planned parent Agent Marketplace for the broader vision. Its positioning is an Agent Marketplace that showcases the Accountable Agent Commerce Layer. QuotaDEX is the first vertical service planned inside that future PieBazaar marketplace.
+
 当前仓库已经从纯文档状态推进到 `Phase 7` 前夜：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker 和 Buyer demo 都已落地，下一步进入真实链上与 Escrow 集成。
 
 ## Read First
 
 Before writing code, read these documents in order:
 
-1. [docs/project/PieBazaar - QuotaDEX 技术规格说明书 v3.0 (Final).md](docs/project/PieBazaar%20-%20QuotaDEX%20%E6%8A%80%E6%9C%AF%E8%A7%84%E6%A0%BC%E8%AF%B4%E6%98%8E%E4%B9%A6%20v3.0%20%28Final%29.md)
+1. [docs/project/QuotaDEX 技术规格说明书 v3.0 (Final).md](docs/project/QuotaDEX%20%E6%8A%80%E6%9C%AF%E8%A7%84%E6%A0%BC%E8%AF%B4%E6%98%8E%E4%B9%A6%20v3.0%20%28Final%29.md)
 2. [docs/mvp-rules(swen).md](docs/mvp-rules(swen).md)
 3. [docs/development-order(swen).md](docs/development-order(swen).md)
 4. [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md)
