@@ -29,6 +29,14 @@ export function notFoundResponse(
   return errorResponse(404, { error, code, details });
 }
 
+export function serviceUnavailableResponse(
+  error: string,
+  code = "SERVICE_UNAVAILABLE",
+  details?: Record<string, unknown>
+): NextResponse<ErrorPayload> {
+  return errorResponse(503, { error, code, details });
+}
+
 export function internalServerErrorResponse(
   error = "Internal Server Error",
   code = "INTERNAL_SERVER_ERROR",

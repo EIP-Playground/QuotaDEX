@@ -2,7 +2,7 @@
 
 QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP uses a Gateway + Supabase + Redis + Escrow design so AI agents can buy and sell idle model quota through HTTP 402 interception and Web3 micro-payments on Kite AI.
 
-当前仓库已经从纯文档状态推进到第一阶段骨架，目标是先落地 Gateway、共享库和 Supabase schema，再逐步实现 `quote -> verify -> seller execution -> result delivery` 的 Happy Path。
+当前仓库已经从纯文档状态推进到 `Phase 4` 前夜：Gateway 骨架、Supabase schema、Seller 生命周期和 `quote` 拦截都已落地，下一步进入 `verify(Mock) -> seller execution -> result delivery` 的 Happy Path。
 
 ## Read First
 
@@ -17,9 +17,9 @@ Before writing code, read these documents in order:
 
 Current delivery summary:
 
-- Current phase: `Phase 3 - quote`
-- Current step: `Step 1/6` validate `buyer_id / capability / prompt`
-- Next milestone: return a valid `402 Payment Required` response
+- Current phase: `Phase 4 - verify (Mock)`
+- Current step: `Step 1/6` recompute `fingerprint`
+- Next milestone: create a formal `paid` job after mock payment verification
 
 ## Finished Phases
 
@@ -29,6 +29,8 @@ Current delivery summary:
   - `Supabase`, `sellers`, `jobs`, `events`, `migration`
 - `Phase 2 - seller lifecycle`
   - `register`, `heartbeat`, `offline`
+- `Phase 3 - quote`
+  - request validation, seller reservation, `fingerprint`, Redis quote context, `402`
 
 ## Full Tracker
 
@@ -58,7 +60,9 @@ lib/
   env.ts
   errors.ts
   fingerprint.ts
+  jobs.ts
   redis.ts
+  sellers.ts
   supabase.ts
 supabase/
   migrations/
@@ -83,11 +87,18 @@ docs/
   - `POST /api/v1/sellers/register`
   - `POST /api/v1/sellers/heartbeat`
   - `POST /api/v1/sellers/offline`
-- Job routes for `quote`, `verify`, `start`, `complete`, `fail`, and polling exist as route files, but most are still scaffolds.
+- The `POST /api/v1/jobs/quote` route is implemented:
+  - validates `buyer_id / capability / prompt`
+  - reserves a seller with a conditional database update
+  - builds `fingerprint` and reuses it as `payment_id`
+  - stores `quote:{payment_id}` in Redis
+  - returns `402 Payment Required`
+- Job routes for `verify`, `start`, `complete`, `fail`, and polling still exist as scaffolds.
 - Shared helpers already exist for:
   - env loading
   - error responses
   - fingerprint generation
+  - quote parsing and seller reservation
   - Redis access
   - Supabase access
   - seller request parsing

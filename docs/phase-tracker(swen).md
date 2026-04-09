@@ -1,6 +1,6 @@
 # QuotaDEX 阶段路径图（swen）
 
-> 日期：2026-04-08
+> 日期：2026-04-09
 > 目的：提供一个一眼可读的开发阶段路径图，帮助团队成员和 AI 快速判断“现在在哪个 Phase、下一步做什么”。
 > 配套文档：
 > - `docs/mvp-rules(swen).md`
@@ -13,20 +13,22 @@
 - `Phase 0` 已完成
 - `Phase 1` 已完成
 - `Phase 2` 已完成
-- `Phase 3` 下一步开始
+- `Phase 3` 已完成
+- `Phase 4` 下一步开始
 
 当前步骤进度：
 
 - `Phase 0`: `6/6` steps done
 - `Phase 1`: `6/6` steps done
 - `Phase 2`: `4/4` steps done
-- `Phase 3`: `0/6` steps done
-- 当前步骤：`Phase 3 / Step 1` `校验 buyer_id / capability / prompt`
+- `Phase 3`: `6/6` steps done
+- `Phase 4`: `0/6` steps done
+- 当前步骤：`Phase 4 / Step 1` `重算 fingerprint`
 
 一句话：
 
-- 仓库已经完成“项目骨架 + 数据层 + Seller 生命周期接口”
-- 现在正式进入 `quote` 实现阶段
+- 仓库已经完成“项目骨架 + 数据层 + Seller 生命周期接口 + quote”
+- 现在正式进入 `verify(Mock)` 实现阶段
 
 ## 2. 路径图
 
@@ -40,10 +42,10 @@
 [Phase 2 Seller 生命周期 | register / heartbeat / offline] DONE
         |
         v
-[Phase 3 quote | 匹配卖家 / reserved / fingerprint / 402]      NEXT
+[Phase 3 quote | 匹配卖家 / reserved / fingerprint / 402]      DONE
         |
         v
-[Phase 4 verify(Mock) | 指纹校验 / tx mock / 建 job / busy]
+[Phase 4 verify(Mock) | 指纹校验 / tx mock / 建 job / busy]   NEXT
         |
         v
 [Phase 5 Seller worker | realtime / start / complete / fail]
@@ -74,8 +76,8 @@
 | `Phase 0` | `DONE` | `Next.js`, `app/api`, `lib`, `env`, `README` |
 | `Phase 1` | `DONE` | `Supabase`, `sellers`, `jobs`, `events`, `migration` |
 | `Phase 2` | `DONE` | `register`, `heartbeat`, `offline`, `校验`, `seller state` |
-| `Phase 3` | `NEXT` | `quote`, `匹配卖家`, `reserved`, `fingerprint`, `402` |
-| `Phase 4` | `LATER` | `verify`, `fingerprint`, `tx_hash`, `payment_id`, `job` |
+| `Phase 3` | `DONE` | `quote`, `匹配卖家`, `reserved`, `fingerprint`, `402` |
+| `Phase 4` | `NEXT` | `verify`, `fingerprint`, `tx_hash`, `payment_id`, `job` |
 | `Phase 5` | `LATER` | `seller worker`, `Realtime`, `start`, `complete`, `fail` |
 | `Phase 6` | `LATER` | `buyer demo`, `quote`, `mock pay`, `verify`, `wait result` |
 | `Phase 7` | `LATER` | `Escrow`, `deposit`, `receipt`, `release`, `refund` |
@@ -89,8 +91,8 @@
 | `Phase 0` | `DONE` | `6/6 done` | `completed` |
 | `Phase 1` | `DONE` | `6/6 done` | `completed` |
 | `Phase 2` | `DONE` | `4/4 done` | `completed` |
-| `Phase 3` | `NEXT` | `0/6 done` | `Step 1: 校验 buyer_id / capability / prompt` |
-| `Phase 4` | `LATER` | `0/6 done` | `not started` |
+| `Phase 3` | `DONE` | `6/6 done` | `completed` |
+| `Phase 4` | `NEXT` | `0/6 done` | `Step 1: 重算 fingerprint` |
 | `Phase 5` | `LATER` | `0/6 done` | `not started` |
 | `Phase 6` | `LATER` | `0/4 done` | `not started` |
 | `Phase 7` | `LATER` | `0/5 done` | `not started` |
@@ -188,22 +190,20 @@
 
 ### Phase 3：quote
 
-状态：`NEXT`
+状态：`DONE`
 
 关键词：`quote` `匹配卖家` `reserved` `fingerprint` `402`
 
-步骤进度：`0/6 done`
-
-当前步骤：`Step 1` `校验 buyer_id / capability / prompt`
+步骤进度：`6/6 done`
 
 步骤清单：
 
-- `[ ]` Step 1: 校验 `buyer_id / capability / prompt`
-- `[ ]` Step 2: 查找能力匹配且 `idle` 的 seller
-- `[ ]` Step 3: 用数据库原子更新将 seller 置为 `reserved`
-- `[ ]` Step 4: 生成 `fingerprint`
-- `[ ]` Step 5: Redis 写入 `quote:{payment_id}`
-- `[ ]` Step 6: 返回 `402 + payment_id + seller + amount`
+- `[x]` Step 1: 校验 `buyer_id / capability / prompt`
+- `[x]` Step 2: 查找能力匹配且 `idle` 的 seller
+- `[x]` Step 3: 用数据库原子更新将 seller 置为 `reserved`
+- `[x]` Step 4: 生成 `fingerprint`
+- `[x]` Step 5: Redis 写入 `quote:{payment_id}`
+- `[x]` Step 6: 返回 `402 + payment_id + seller + amount`
 
 目标：
 
@@ -212,7 +212,7 @@
 需要完成的事：
 
 1. 校验 `buyer_id / capability / prompt`
-2. 查找能力匹配且 `idle` 的 seller
+2. 查找能力匹配且 `idle` 或已过期 `reserved` 的 seller
 3. 用数据库原子更新将 seller 置为 `reserved`
 4. 生成 `fingerprint`
 5. Redis 写入 `quote:{payment_id}`
@@ -226,11 +226,13 @@
 
 ### Phase 4：verify(Mock)
 
-状态：`LATER`
+状态：`NEXT`
 
 关键词：`verify` `fingerprint` `tx_hash` `payment_id` `job`
 
 步骤进度：`0/6 done`
+
+当前步骤：`Step 1` `重算 fingerprint`
 
 步骤清单：
 
@@ -390,12 +392,12 @@
 
 1. 打开 `docs/mvp-rules(swen).md`
 2. 打开 `docs/development-order(swen).md`
-3. 按本文件进入 `Phase 3`
-4. 优先实现 `POST /api/v1/jobs/quote`
+3. 按本文件进入 `Phase 4`
+4. 优先实现 `POST /api/v1/jobs/verify`
 
 ## 8. 不该做什么
 
-在 `Phase 3` 之前，不建议提前展开：
+在 `Phase 4` 主链路跑通之前，不建议提前展开：
 
 1. 真实链上合约实现
 2. 完整 SDK 封装
@@ -414,4 +416,5 @@
 - 基础工程已搭完
 - 数据层已落完
 - Seller 生命周期已完成
-- 下一步进入 `quote`
+- `quote` 已完成
+- 下一步进入 `verify(Mock)`
