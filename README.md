@@ -4,7 +4,7 @@ QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP use
 
 PieBazaar is the planned parent Agent Marketplace for the broader vision. Its positioning is an Agent Marketplace that showcases the Accountable Agent Commerce Layer. QuotaDEX is the first vertical service planned inside that future PieBazaar marketplace.
 
-当前仓库已经从纯文档状态推进到 `Phase 7` 前夜：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker 和 Buyer demo 都已落地，下一步进入真实链上与 Escrow 集成。
+当前仓库已经进入 `Phase 7`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、Escrow 合约骨架和真实 `deposit` 接线都已落地，下一步接真实 receipt 校验。
 
 ## Read First
 
@@ -20,7 +20,7 @@ Before writing code, read these documents in order:
 Current delivery summary:
 
 - Current phase: `Phase 7 - real chain + Escrow`
-- Current step: `Step 1/5` implement Escrow contract
+- Current step: `Step 3/5` wire real receipt validation
 - Next milestone: replace mock payment verification with real on-chain receipt validation
 
 ## Finished Phases
@@ -69,6 +69,7 @@ lib/
   errors.ts
   fingerprint.ts
   jobs.ts
+  chain/
   redis.ts
   sellers.ts
   supabase.ts
@@ -76,6 +77,7 @@ supabase/
   migrations/
 docs/
 scripts/
+contracts/
 ```
 
 ### Directory Responsibilities
@@ -84,12 +86,16 @@ scripts/
   Gateway HTTP entrypoints for seller registration, buyer quote/verify, and seller job status callbacks.
 - `lib/*`
   Shared server helpers for env loading, error responses, fingerprint generation, Redis, and Supabase.
+- `lib/chain/*`
+  Shared chain helpers for Escrow ABI, payment ID normalization, and on-chain amount conversion.
 - `supabase/migrations/*`
   Database schema for `sellers`, `jobs`, and `events`.
 - `docs/*`
   Product spec, MVP rules, and development sequence.
 - `scripts/*`
   Local demo helpers such as the seller worker and later buyer happy-path scripts.
+- `contracts/*`
+  Solidity escrow contracts for on-chain payment funding, release, and refund.
 
 ## Current Implementation
 
@@ -124,9 +130,17 @@ scripts/
   - `GET /api/v1/jobs/:id`
 - A minimal buyer demo script exists:
   - `scripts/buyer-demo.mjs`
-  - `quote -> mock pay -> verify -> wait result`
+  - `quote -> mock pay or real approve+deposit -> verify -> wait result`
   - Supabase Realtime result subscription
   - polling fallback through `GET /api/v1/jobs/:id`
+- A minimal escrow contract skeleton exists:
+  - `contracts/QuotaDEXEscrow.sol`
+  - `deposit(paymentId, seller, amount)`
+  - `release(paymentId)`
+  - `refund(paymentId)`
+- The Escrow ABI and chain helpers already exist:
+  - `contracts/QuotaDEXEscrow.abi.json`
+  - `lib/chain/escrow.ts`
 - Shared helpers already exist for:
   - env loading
   - error responses
@@ -140,6 +154,7 @@ scripts/
   - seller request parsing
 - The initial Supabase migration is in place, including `payment_id`.
 - A minimal landing page exists so the app can build and run locally.
+- A basic contract note exists in `contracts/README.md`.
 
 ## Environment Variables
 
@@ -168,8 +183,10 @@ These variables come from four places:
   These values are used later for real payment verification and Escrow contract operations.
   - `KITE_RPC_URL`: the RPC endpoint for the Kite network
   - `PYUSD_CONTRACT_ADDRESS`: the PYUSD token contract address
+  - `PYUSD_DECIMALS`: token decimals, default `6` for PYUSD in the demo flow
   - `ESCROW_CONTRACT_ADDRESS`: your deployed Escrow contract address
   - `GATEWAY_PRIVATE_KEY`: the private key of the Gateway wallet
+  - `BUYER_PRIVATE_KEY`: optional buyer wallet private key for real `approve + deposit`
 
 Important:
 
@@ -186,8 +203,10 @@ UPSTASH_REDIS_REST_TOKEN=
 GATEWAY_SALT=
 KITE_RPC_URL=
 PYUSD_CONTRACT_ADDRESS=
+PYUSD_DECIMALS=6
 ESCROW_CONTRACT_ADDRESS=
 GATEWAY_PRIVATE_KEY=
+BUYER_PRIVATE_KEY=
 ```
 
 ## Local Development

@@ -6,7 +6,7 @@
 > - `docs/mvp-rules(swen).md`
 > - `docs/development-order(swen).md`
 
-当前：`Phase 7 / Step 1` `实现 Escrow 合约`
+当前：`Phase 7 / Step 3` `接真实 receipt 校验`
 
 ## 1. 路径图
 
@@ -264,14 +264,14 @@
 
 关键词：`Escrow` `deposit` `receipt` `release` `refund`
 
-步骤进度：`0/5 done`
+步骤进度：`2/5 done`
 
-当前步骤：`Step 1` `实现 Escrow 合约`
+当前步骤：`Step 3` `接真实 receipt 校验`
 
 步骤清单：
 
-- `○` Step 1: 实现 Escrow 合约
-- `○` Step 2: 接入 `deposit(payment_id, seller, amount)`
+- `✓` Step 1: 实现 Escrow 合约
+- `✓` Step 2: 接入 `deposit(payment_id, seller, amount)`
 - `○` Step 3: 接真实 receipt 校验
 - `○` Step 4: 接入 `release`
 - `○` Step 5: 接入 `refund`
@@ -282,9 +282,9 @@
 
 需要完成的事：
 
-1. 实现 `Escrow.deposit(payment_id, seller, amount)`
-2. 接真实 receipt 校验
-3. 接 release / refund
+1. 接真实 receipt 校验
+2. 接 release
+3. 接 refund
 
 ### Phase 8：SDK
 
@@ -341,17 +341,17 @@
 1. 打开 `docs/mvp-rules(swen).md`
 2. 打开 `docs/development-order(swen).md`
 3. 按本文件进入 `Phase 7`
-4. 优先实现 Escrow 合约和真实 receipt 校验
+4. 优先实现真实 receipt 校验，再接 `release / refund`
 
 ## 5. 不该做什么
 
 在 `Phase 7` 主链路跑通之前，不建议提前展开：
 
-1. 真实链上合约实现
-2. 完整 SDK 封装
-3. Dashboard
-4. 复杂权限体系
-5. 复杂容错机制
+1. 完整 SDK 封装
+2. Dashboard
+3. 复杂权限体系
+4. 复杂容错机制
+5. 生产级合约治理、多签和审计扩展
 
 原因：
 

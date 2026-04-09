@@ -4,9 +4,12 @@ const skeletonFiles = [
   "lib/env.ts",
   "lib/errors.ts",
   "lib/fingerprint.ts",
+  "lib/chain/escrow.ts",
   "lib/supabase.ts",
   "lib/redis.ts",
-  "supabase/migrations/20260408_000001_init_mvp.sql"
+  "supabase/migrations/20260408_000001_init_mvp.sql",
+  "contracts/QuotaDEXEscrow.sol",
+  "contracts/QuotaDEXEscrow.abi.json"
 ];
 
 const docs = [
@@ -47,7 +50,7 @@ export default function HomePage() {
             <li>Set up the Next.js gateway application.</li>
             <li>Define shared env, Redis, Supabase, and fingerprint helpers.</li>
             <li>Run the QuotaDEX buyer and seller happy path end to end.</li>
-            <li>Prepare the next phase: real chain and Escrow integration.</li>
+            <li>Next up: real receipt validation, then Gateway release/refund.</li>
           </ul>
         </article>
 

@@ -33,12 +33,16 @@ Optional local overrides:
 - `SELLER_PRICE_PER_TASK` default: `0.01`
 - `SELLER_HEARTBEAT_INTERVAL_MS` default: `20000`
 
+Note:
+
+- For Phase 7 real on-chain payment tests, `SELLER_ID` should be the seller wallet address because the escrow contract releases funds to `quote.seller_id`.
+
 ## buyer-demo.mjs
 
-Minimal Phase 6 demo buyer:
+Minimal Phase 6/7 demo buyer:
 
 - calls `POST /api/v1/jobs/quote`
-- simulates a mock payment by generating a fake `tx_hash`
+- either simulates a mock payment or performs real `approve + deposit`
 - calls `POST /api/v1/jobs/verify`
 - waits for the final result through Realtime, with polling fallback
 
@@ -55,3 +59,16 @@ Optional local overrides:
 - `BUYER_CAPABILITY` default: `llama-3`
 - `BUYER_PROMPT` default: `hello from buyer demo`
 - `BUYER_RESULT_TIMEOUT_MS` default: `30000`
+
+To enable real on-chain payment mode:
+
+- set `BUYER_PRIVATE_KEY`
+- set `KITE_RPC_URL`
+- set `PYUSD_CONTRACT_ADDRESS`
+- set `ESCROW_CONTRACT_ADDRESS`
+- optionally set `PYUSD_DECIMALS` default: `6`
+
+In real payment mode:
+
+- `BUYER_ID` must match the wallet address derived from `BUYER_PRIVATE_KEY`
+- the quoted `seller_id` must already be an EVM address
