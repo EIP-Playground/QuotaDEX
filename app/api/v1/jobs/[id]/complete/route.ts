@@ -6,6 +6,8 @@ import {
   internalServerErrorResponse,
   notFoundResponse
 } from "@/lib/errors";
+import { executeEscrowGatewayAction } from "@/lib/chain/escrow";
+import { getServerEnv } from "@/lib/env";
 import {
   loadJobSnapshot,
   logJobEvent,
@@ -70,6 +72,18 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  let env: ReturnType<typeof getServerEnv>;
+
+  try {
+    env = getServerEnv();
+  } catch (error) {
+    return internalServerErrorResponse(
+      "Missing Gateway configuration for completion.",
+      "GATEWAY_CONFIG_MISSING",
+      { reason: error instanceof Error ? error.message : "Unknown config error." }
+    );
+  }
+
   let updatedJob;
 
   try {
@@ -93,6 +107,73 @@ export async function POST(request: Request, context: RouteContext) {
       "Job could not be completed because its state changed concurrently.",
       "INVALID_JOB_STATE"
     );
+  }
+
+  let releaseStatus:
+    | {
+        status: "released";
+        tx_hash: string;
+      }
+    | {
+        status: "failed";
+        error: string;
+      };
+
+  try {
+    const release = await executeEscrowGatewayAction({
+      action: "release",
+      paymentId: jobSnapshot.payment_id,
+      rpcUrl: env.KITE_RPC_URL,
+      escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
+      gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+    });
+
+    releaseStatus = {
+      status: "released",
+      tx_hash: release.txHash
+    };
+
+    try {
+      await logJobEvent({
+        jobId: id,
+        type: "RELEASED",
+        message: `Escrow released payment ${jobSnapshot.payment_id} for job ${id}.`
+      });
+    } catch (error) {
+      console.error("Failed to log release event", {
+        jobId: id,
+        paymentId: jobSnapshot.payment_id,
+        reason: error instanceof Error ? error.message : "Unknown event error."
+      });
+    }
+  } catch (error) {
+    const releaseErrorMessage =
+      error instanceof Error ? error.message : "Unknown escrow release error.";
+
+    releaseStatus = {
+      status: "failed",
+      error: releaseErrorMessage
+    };
+
+    console.error("Failed to release escrow after job completion", {
+      jobId: id,
+      paymentId: jobSnapshot.payment_id,
+      reason: releaseErrorMessage
+    });
+
+    try {
+      await logJobEvent({
+        jobId: id,
+        type: "RELEASE_FAILED",
+        message: `Escrow release failed for payment ${jobSnapshot.payment_id}: ${releaseErrorMessage}`
+      });
+    } catch (eventError) {
+      console.error("Failed to log release failure event", {
+        jobId: id,
+        paymentId: jobSnapshot.payment_id,
+        reason: eventError instanceof Error ? eventError.message : "Unknown event error."
+      });
+    }
   }
 
   try {
@@ -129,6 +210,7 @@ export async function POST(request: Request, context: RouteContext) {
   return NextResponse.json({
     job_id: updatedJob.id,
     status: updatedJob.status,
-    result: updatedJob.result
+    result: updatedJob.result,
+    release: releaseStatus
   });
 }

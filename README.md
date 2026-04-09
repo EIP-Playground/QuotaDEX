@@ -4,7 +4,7 @@ QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP use
 
 PieBazaar is the planned parent Agent Marketplace for the broader vision. Its positioning is an Agent Marketplace that showcases the Accountable Agent Commerce Layer. QuotaDEX is the first vertical service planned inside that future PieBazaar marketplace.
 
-当前仓库已经进入 `Phase 7`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、Escrow 合约骨架和真实 `deposit` 接线都已落地，下一步接真实 receipt 校验。
+当前仓库已经完成 `Phase 7`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、Escrow 合约骨架、真实 `deposit`、receipt 校验、`release`、`refund` 都已落地，下一步进入 SDK 提炼。
 
 ## Read First
 
@@ -19,9 +19,9 @@ Before writing code, read these documents in order:
 
 Current delivery summary:
 
-- Current phase: `Phase 7 - real chain + Escrow`
-- Current step: `Step 3/5` wire real receipt validation
-- Next milestone: replace mock payment verification with real on-chain receipt validation
+- Current phase: `Phase 8 - SDK`
+- Current step: `Step 1/2` extract `buyer-sdk`
+- Next milestone: package the buyer happy path into a reusable SDK entry
 
 ## Finished Phases
 
@@ -39,6 +39,8 @@ Current delivery summary:
   - self-check, register, heartbeat, Realtime subscribe, `start`, `complete`, `fail`
 - `Phase 6 - buyer demo`
   - `quote`, mock pay, `verify`, Realtime wait, polling fallback
+- `Phase 7 - real chain + Escrow`
+  - Escrow contract, real `deposit`, receipt validation, `release`, `refund`
 
 ## Full Tracker
 
@@ -113,13 +115,16 @@ contracts/
 - The `POST /api/v1/jobs/verify` route is implemented:
   - recomputes `fingerprint` from the payload
   - loads `quote:{payment_id}` from Redis
-  - performs mock `tx_hash` validation
+  - verifies real Escrow deposit receipts for full transaction hashes
+  - keeps mock `tx_hash` validation as a local fallback
   - creates a formal `paid` job
   - moves the seller from `reserved` to `busy`
 - The seller execution callbacks are implemented:
   - `POST /api/v1/jobs/:id/start`
   - `POST /api/v1/jobs/:id/complete`
   - `POST /api/v1/jobs/:id/fail`
+  - `complete` now triggers Gateway-side `Escrow.release(payment_id)`
+  - `fail` now triggers Gateway-side `Escrow.refund(payment_id)`
 - A minimal seller worker script exists:
   - `scripts/seller-worker.mjs`
   - local self-check before startup

@@ -6,7 +6,7 @@
 > - `docs/mvp-rules(swen).md`
 > - `docs/development-order(swen).md`
 
-当前：`Phase 7 / Step 3` `接真实 receipt 校验`
+当前：`Phase 8 / Step 1` `提炼 buyer-sdk`
 
 ## 1. 路径图
 
@@ -32,10 +32,10 @@
 [Phase 6 Buyer demo | quote / pay / verify / wait result]     DONE
         |
         v
-[Phase 7 Real chain + Escrow | deposit / receipt / release / refund] NEXT
+[Phase 7 Real chain + Escrow | deposit / receipt / release / refund] DONE
         |
         v
-[Phase 8 SDK | buyer-sdk / seller-sdk / 封装流程]
+[Phase 8 SDK | buyer-sdk / seller-sdk / 封装流程] NEXT
         |
         v
 [Phase 9 Dashboard + Stability | 事件流 / 超时 / 退款 / 重试]
@@ -260,39 +260,41 @@
 
 ### Phase 7：Real chain + Escrow
 
-状态：`NEXT`
+状态：`DONE`
 
 关键词：`Escrow` `deposit` `receipt` `release` `refund`
 
-步骤进度：`2/5 done`
-
-当前步骤：`Step 3` `接真实 receipt 校验`
+步骤进度：`5/5 done`
 
 步骤清单：
 
 - `✓` Step 1: 实现 Escrow 合约
 - `✓` Step 2: 接入 `deposit(payment_id, seller, amount)`
-- `○` Step 3: 接真实 receipt 校验
-- `○` Step 4: 接入 `release`
-- `○` Step 5: 接入 `refund`
+- `✓` Step 3: 接真实 receipt 校验
+- `✓` Step 4: 接入 `release`
+- `✓` Step 5: 接入 `refund`
 
 目标：
 
 - 把 Mock 支付替换成真实链上流程
 
-需要完成的事：
+已完成内容：
 
-1. 接真实 receipt 校验
-2. 接 release
-3. 接 refund
+1. `QuotaDEXEscrow.sol`
+2. `approve + deposit` buyer flow
+3. `verify` 真实 receipt 校验
+4. `complete -> release`
+5. `fail -> refund`
 
 ### Phase 8：SDK
 
-状态：`LATER`
+状态：`NEXT`
 
 关键词：`buyer-sdk` `seller-sdk` `封装` `复用` `接入库`
 
 步骤进度：`0/2 done`
+
+当前步骤：`Step 1` `提炼 buyer-sdk`
 
 步骤清单：
 
@@ -341,7 +343,7 @@
 1. 打开 `docs/mvp-rules(swen).md`
 2. 打开 `docs/development-order(swen).md`
 3. 按本文件进入 `Phase 7`
-4. 优先实现真实 receipt 校验，再接 `release / refund`
+4. 优先提炼 `buyer-sdk`，然后再提炼 `seller-sdk`
 
 ## 5. 不该做什么
 
@@ -368,4 +370,5 @@
 - `verify(Mock)` 已完成
 - `Seller worker` 已完成
 - `Buyer demo` 已完成
-- 下一步进入 `Real chain + Escrow`
+- `Real chain + Escrow` 已完成
+- 下一步进入 `SDK`

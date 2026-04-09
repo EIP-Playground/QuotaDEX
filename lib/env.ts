@@ -10,6 +10,7 @@ type ServerEnv = PublicEnv & {
   GATEWAY_SALT: string;
   KITE_RPC_URL: string;
   PYUSD_CONTRACT_ADDRESS: string;
+  PYUSD_DECIMALS: string;
   ESCROW_CONTRACT_ADDRESS: string;
   GATEWAY_PRIVATE_KEY: string;
 };
@@ -40,6 +41,7 @@ export function getServerEnv(): ServerEnv {
     GATEWAY_SALT: requireEnv("GATEWAY_SALT"),
     KITE_RPC_URL: requireEnv("KITE_RPC_URL"),
     PYUSD_CONTRACT_ADDRESS: requireEnv("PYUSD_CONTRACT_ADDRESS"),
+    PYUSD_DECIMALS: requireEnv("PYUSD_DECIMALS"),
     ESCROW_CONTRACT_ADDRESS: requireEnv("ESCROW_CONTRACT_ADDRESS"),
     GATEWAY_PRIVATE_KEY: requireEnv("GATEWAY_PRIVATE_KEY")
   };

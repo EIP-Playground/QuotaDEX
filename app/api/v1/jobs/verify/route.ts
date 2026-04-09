@@ -5,6 +5,11 @@ import {
   forbiddenResponse,
   internalServerErrorResponse
 } from "@/lib/errors";
+import {
+  InvalidEscrowReceiptError,
+  looksLikeOnChainTxHash,
+  verifyEscrowDepositReceipt
+} from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
 import { buildFingerprint } from "@/lib/fingerprint";
 import {
@@ -97,13 +102,38 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    verifyMockTxHash(verifyRequest.tx_hash);
-  } catch (error) {
-    return badRequestResponse(
-      error instanceof Error ? error.message : "Invalid mock tx hash.",
-      "INVALID_TX_HASH"
-    );
+  if (looksLikeOnChainTxHash(verifyRequest.tx_hash)) {
+    try {
+      await verifyEscrowDepositReceipt({
+        txHash: verifyRequest.tx_hash,
+        paymentId: quoteContext.payment_id,
+        buyerId: verifyRequest.payload.buyer_id,
+        sellerId: quoteContext.seller_id,
+        amount: quoteContext.amount,
+        rpcUrl: env.KITE_RPC_URL,
+        escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
+        pyusdDecimals: Number.parseInt(env.PYUSD_DECIMALS, 10)
+      });
+    } catch (error) {
+      if (error instanceof InvalidEscrowReceiptError) {
+        return badRequestResponse(error.message, error.code);
+      }
+
+      return internalServerErrorResponse(
+        "Failed to verify on-chain receipt.",
+        "RECEIPT_VERIFY_FAILED",
+        { reason: error instanceof Error ? error.message : "Unknown receipt verify error." }
+      );
+    }
+  } else {
+    try {
+      verifyMockTxHash(verifyRequest.tx_hash);
+    } catch (error) {
+      return badRequestResponse(
+        error instanceof Error ? error.message : "Invalid mock tx hash.",
+        "INVALID_TX_HASH"
+      );
+    }
   }
 
   let createdJob;

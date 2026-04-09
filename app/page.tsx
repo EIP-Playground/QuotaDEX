@@ -50,7 +50,7 @@ export default function HomePage() {
             <li>Set up the Next.js gateway application.</li>
             <li>Define shared env, Redis, Supabase, and fingerprint helpers.</li>
             <li>Run the QuotaDEX buyer and seller happy path end to end.</li>
-            <li>Next up: real receipt validation, then Gateway release/refund.</li>
+            <li>Next up: extract buyer-sdk, then seller-sdk.</li>
           </ul>
         </article>
 
