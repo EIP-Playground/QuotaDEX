@@ -32,3 +32,26 @@ Optional local overrides:
 - `SELLER_CAPABILITY` default: `llama-3`
 - `SELLER_PRICE_PER_TASK` default: `0.01`
 - `SELLER_HEARTBEAT_INTERVAL_MS` default: `20000`
+
+## buyer-demo.mjs
+
+Minimal Phase 6 demo buyer:
+
+- calls `POST /api/v1/jobs/quote`
+- simulates a mock payment by generating a fake `tx_hash`
+- calls `POST /api/v1/jobs/verify`
+- waits for the final result through Realtime, with polling fallback
+
+Run it with Node 20+:
+
+```bash
+node --env-file=.env.local scripts/buyer-demo.mjs
+```
+
+Optional local overrides:
+
+- `GATEWAY_BASE_URL` default: `http://localhost:3000`
+- `BUYER_ID` default: `buyer-demo`
+- `BUYER_CAPABILITY` default: `llama-3`
+- `BUYER_PROMPT` default: `hello from buyer demo`
+- `BUYER_RESULT_TIMEOUT_MS` default: `30000`

@@ -16,7 +16,8 @@
 - `Phase 3` 已完成
 - `Phase 4` 已完成
 - `Phase 5` 已完成
-- `Phase 6` 下一步开始
+- `Phase 6` 已完成
+- `Phase 7` 下一步开始
 
 当前步骤进度：
 
@@ -26,13 +27,14 @@
 - `Phase 3`: `6/6` steps done
 - `Phase 4`: `6/6` steps done
 - `Phase 5`: `6/6` steps done
-- `Phase 6`: `0/4` steps done
-- 当前步骤：`Phase 6 / Step 1` `调 quote`
+- `Phase 6`: `4/4` steps done
+- `Phase 7`: `0/5` steps done
+- 当前步骤：`Phase 7 / Step 1` `实现 Escrow 合约`
 
 一句话：
 
-- 仓库已经完成“项目骨架 + 数据层 + Seller 生命周期接口 + quote + verify(Mock) + Seller worker”
-- 现在正式进入 `Buyer demo` 实现阶段
+- 仓库已经完成“项目骨架 + 数据层 + Seller 生命周期接口 + quote + verify(Mock) + Seller worker + Buyer demo”
+- 现在正式进入 `Real chain + Escrow` 实现阶段
 
 ## 2. 路径图
 
@@ -55,10 +57,10 @@
 [Phase 5 Seller worker | realtime / start / complete / fail]  DONE
         |
         v
-[Phase 6 Buyer demo | quote / pay / verify / wait result]     NEXT
+[Phase 6 Buyer demo | quote / pay / verify / wait result]     DONE
         |
         v
-[Phase 7 Real chain + Escrow | deposit / receipt / release / refund]
+[Phase 7 Real chain + Escrow | deposit / receipt / release / refund] NEXT
         |
         v
 [Phase 8 SDK | buyer-sdk / seller-sdk / 封装流程]
@@ -83,8 +85,8 @@
 | `Phase 3` | `DONE` | `quote`, `匹配卖家`, `reserved`, `fingerprint`, `402` |
 | `Phase 4` | `DONE` | `verify`, `fingerprint`, `tx_hash`, `payment_id`, `job` |
 | `Phase 5` | `DONE` | `seller worker`, `Realtime`, `start`, `complete`, `fail` |
-| `Phase 6` | `NEXT` | `buyer demo`, `quote`, `mock pay`, `verify`, `wait result` |
-| `Phase 7` | `LATER` | `Escrow`, `deposit`, `receipt`, `release`, `refund` |
+| `Phase 6` | `DONE` | `buyer demo`, `quote`, `mock pay`, `verify`, `wait result` |
+| `Phase 7` | `NEXT` | `Escrow`, `deposit`, `receipt`, `release`, `refund` |
 | `Phase 8` | `LATER` | `buyer-sdk`, `seller-sdk`, `封装`, `复用`, `接入库` |
 | `Phase 9` | `LATER` | `Dashboard`, `events`, `timeout`, `refund`, `retry` |
 
@@ -98,8 +100,8 @@
 | `Phase 3` | `DONE` | `6/6 done` | `completed` |
 | `Phase 4` | `DONE` | `6/6 done` | `completed` |
 | `Phase 5` | `DONE` | `6/6 done` | `completed` |
-| `Phase 6` | `NEXT` | `0/4 done` | `Step 1: 调 quote` |
-| `Phase 7` | `LATER` | `0/5 done` | `not started` |
+| `Phase 6` | `DONE` | `4/4 done` | `completed` |
+| `Phase 7` | `NEXT` | `0/5 done` | `Step 1: 实现 Escrow 合约` |
 | `Phase 8` | `LATER` | `0/2 done` | `not started` |
 | `Phase 9` | `LATER` | `0/4 done` | `not started` |
 
@@ -290,20 +292,18 @@
 
 ### Phase 6：Buyer demo script
 
-状态：`NEXT`
+状态：`DONE`
 
 关键词：`buyer demo` `quote` `mock pay` `verify` `wait result`
 
-步骤进度：`0/4 done`
-
-当前步骤：`Step 1` `调 quote`
+步骤进度：`4/4 done`
 
 步骤清单：
 
-- `[ ]` Step 1: 调 `quote`
-- `[ ]` Step 2: 模拟支付
-- `[ ]` Step 3: 调 `verify`
-- `[ ]` Step 4: 订阅并等待结果
+- `[x]` Step 1: 调 `quote`
+- `[x]` Step 2: 模拟支付
+- `[x]` Step 3: 调 `verify`
+- `[x]` Step 4: 订阅并等待结果
 
 目标：
 
@@ -314,15 +314,17 @@
 1. 调 `quote`
 2. 模拟支付
 3. 调 `verify`
-4. 订阅 job 结果
+4. 通过 Realtime + 轮询 Fallback 等待 job 结果
 
 ### Phase 7：Real chain + Escrow
 
-状态：`LATER`
+状态：`NEXT`
 
 关键词：`Escrow` `deposit` `receipt` `release` `refund`
 
 步骤进度：`0/5 done`
+
+当前步骤：`Step 1` `实现 Escrow 合约`
 
 步骤清单：
 
@@ -396,12 +398,12 @@
 
 1. 打开 `docs/mvp-rules(swen).md`
 2. 打开 `docs/development-order(swen).md`
-3. 按本文件进入 `Phase 6`
-4. 优先实现 Buyer demo 脚本，串起 `quote -> verify -> 等结果`
+3. 按本文件进入 `Phase 7`
+4. 优先实现 Escrow 合约和真实 receipt 校验
 
 ## 8. 不该做什么
 
-在 `Phase 6` 主链路跑通之前，不建议提前展开：
+在 `Phase 7` 主链路跑通之前，不建议提前展开：
 
 1. 真实链上合约实现
 2. 完整 SDK 封装
@@ -423,4 +425,5 @@
 - `quote` 已完成
 - `verify(Mock)` 已完成
 - `Seller worker` 已完成
-- 下一步进入 `Buyer demo`
+- `Buyer demo` 已完成
+- 下一步进入 `Real chain + Escrow`

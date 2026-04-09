@@ -2,7 +2,7 @@
 
 QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP uses a Gateway + Supabase + Redis + Escrow design so AI agents can buy and sell idle model quota through HTTP 402 interception and Web3 micro-payments on Kite AI.
 
-当前仓库已经从纯文档状态推进到 `Phase 6` 前夜：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)` 和最小 Seller worker 都已落地，下一步进入 `buyer demo -> result delivery` 的 Happy Path。
+当前仓库已经从纯文档状态推进到 `Phase 7` 前夜：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker 和 Buyer demo 都已落地，下一步进入真实链上与 Escrow 集成。
 
 ## Read First
 
@@ -17,9 +17,9 @@ Before writing code, read these documents in order:
 
 Current delivery summary:
 
-- Current phase: `Phase 6 - buyer demo`
-- Current step: `Step 1/4` call `quote`
-- Next milestone: run one buyer request through `quote -> verify -> wait result`
+- Current phase: `Phase 7 - real chain + Escrow`
+- Current step: `Step 1/5` implement Escrow contract
+- Next milestone: replace mock payment verification with real on-chain receipt validation
 
 ## Finished Phases
 
@@ -35,6 +35,8 @@ Current delivery summary:
   - recompute `fingerprint`, load quote context, mock `tx_hash`, create `paid` job, move seller to `busy`
 - `Phase 5 - seller worker`
   - self-check, register, heartbeat, Realtime subscribe, `start`, `complete`, `fail`
+- `Phase 6 - buyer demo`
+  - `quote`, mock pay, `verify`, Realtime wait, polling fallback
 
 ## Full Tracker
 
@@ -116,7 +118,13 @@ scripts/
   - seller register and heartbeat
   - Supabase Realtime subscription for seller-assigned jobs
   - Gateway callbacks for `start / complete / fail`
-- `GET /api/v1/jobs/:id` still exists as a scaffold.
+- The polling fallback endpoint is implemented:
+  - `GET /api/v1/jobs/:id`
+- A minimal buyer demo script exists:
+  - `scripts/buyer-demo.mjs`
+  - `quote -> mock pay -> verify -> wait result`
+  - Supabase Realtime result subscription
+  - polling fallback through `GET /api/v1/jobs/:id`
 - Shared helpers already exist for:
   - env loading
   - error responses
