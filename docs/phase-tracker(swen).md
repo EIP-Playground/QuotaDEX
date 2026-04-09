@@ -14,7 +14,8 @@
 - `Phase 1` 已完成
 - `Phase 2` 已完成
 - `Phase 3` 已完成
-- `Phase 4` 下一步开始
+- `Phase 4` 已完成
+- `Phase 5` 下一步开始
 
 当前步骤进度：
 
@@ -22,13 +23,14 @@
 - `Phase 1`: `6/6` steps done
 - `Phase 2`: `4/4` steps done
 - `Phase 3`: `6/6` steps done
-- `Phase 4`: `0/6` steps done
-- 当前步骤：`Phase 4 / Step 1` `重算 fingerprint`
+- `Phase 4`: `6/6` steps done
+- `Phase 5`: `0/6` steps done
+- 当前步骤：`Phase 5 / Step 1` `启动前本地自检`
 
 一句话：
 
-- 仓库已经完成“项目骨架 + 数据层 + Seller 生命周期接口 + quote”
-- 现在正式进入 `verify(Mock)` 实现阶段
+- 仓库已经完成“项目骨架 + 数据层 + Seller 生命周期接口 + quote + verify(Mock)”
+- 现在正式进入 `Seller worker` 实现阶段
 
 ## 2. 路径图
 
@@ -45,10 +47,10 @@
 [Phase 3 quote | 匹配卖家 / reserved / fingerprint / 402]      DONE
         |
         v
-[Phase 4 verify(Mock) | 指纹校验 / tx mock / 建 job / busy]   NEXT
+[Phase 4 verify(Mock) | 指纹校验 / tx mock / 建 job / busy]   DONE
         |
         v
-[Phase 5 Seller worker | realtime / start / complete / fail]
+[Phase 5 Seller worker | realtime / start / complete / fail]  NEXT
         |
         v
 [Phase 6 Buyer demo | quote / pay / verify / wait result]
@@ -77,8 +79,8 @@
 | `Phase 1` | `DONE` | `Supabase`, `sellers`, `jobs`, `events`, `migration` |
 | `Phase 2` | `DONE` | `register`, `heartbeat`, `offline`, `校验`, `seller state` |
 | `Phase 3` | `DONE` | `quote`, `匹配卖家`, `reserved`, `fingerprint`, `402` |
-| `Phase 4` | `NEXT` | `verify`, `fingerprint`, `tx_hash`, `payment_id`, `job` |
-| `Phase 5` | `LATER` | `seller worker`, `Realtime`, `start`, `complete`, `fail` |
+| `Phase 4` | `DONE` | `verify`, `fingerprint`, `tx_hash`, `payment_id`, `job` |
+| `Phase 5` | `NEXT` | `seller worker`, `Realtime`, `start`, `complete`, `fail` |
 | `Phase 6` | `LATER` | `buyer demo`, `quote`, `mock pay`, `verify`, `wait result` |
 | `Phase 7` | `LATER` | `Escrow`, `deposit`, `receipt`, `release`, `refund` |
 | `Phase 8` | `LATER` | `buyer-sdk`, `seller-sdk`, `封装`, `复用`, `接入库` |
@@ -92,8 +94,8 @@
 | `Phase 1` | `DONE` | `6/6 done` | `completed` |
 | `Phase 2` | `DONE` | `4/4 done` | `completed` |
 | `Phase 3` | `DONE` | `6/6 done` | `completed` |
-| `Phase 4` | `NEXT` | `0/6 done` | `Step 1: 重算 fingerprint` |
-| `Phase 5` | `LATER` | `0/6 done` | `not started` |
+| `Phase 4` | `DONE` | `6/6 done` | `completed` |
+| `Phase 5` | `NEXT` | `0/6 done` | `Step 1: 启动前本地自检` |
 | `Phase 6` | `LATER` | `0/4 done` | `not started` |
 | `Phase 7` | `LATER` | `0/5 done` | `not started` |
 | `Phase 8` | `LATER` | `0/2 done` | `not started` |
@@ -226,22 +228,20 @@
 
 ### Phase 4：verify(Mock)
 
-状态：`NEXT`
+状态：`DONE`
 
 关键词：`verify` `fingerprint` `tx_hash` `payment_id` `job`
 
-步骤进度：`0/6 done`
-
-当前步骤：`Step 1` `重算 fingerprint`
+步骤进度：`6/6 done`
 
 步骤清单：
 
-- `[ ]` Step 1: 重算 `fingerprint`
-- `[ ]` Step 2: 查 Redis 中的 quote 临时上下文
-- `[ ]` Step 3: Mock 校验 `tx_hash`
-- `[ ]` Step 4: 创建正式 `job`
-- `[ ]` Step 5: 建立 `payment_id -> job_id` 映射
-- `[ ]` Step 6: 将 seller 状态更新为 `busy`
+- `[x]` Step 1: 重算 `fingerprint`
+- `[x]` Step 2: 查 Redis 中的 quote 临时上下文
+- `[x]` Step 3: Mock 校验 `tx_hash`
+- `[x]` Step 4: 创建正式 `job`
+- `[x]` Step 5: 建立 `payment_id -> job_id` 映射
+- `[x]` Step 6: 将 seller 状态更新为 `busy`
 
 目标：
 
@@ -253,16 +253,18 @@
 2. 查 Redis 中的 quote 临时上下文
 3. Mock 校验 `tx_hash`
 4. 创建正式 `job`
-5. 建立 `payment_id -> job_id` 映射
+5. 通过 `jobs.payment_id` 建立 `payment_id -> job_id` 映射
 6. seller 状态变为 `busy`
 
 ### Phase 5：Seller worker
 
-状态：`LATER`
+状态：`NEXT`
 
 关键词：`seller worker` `Realtime` `start` `complete` `fail`
 
 步骤进度：`0/6 done`
+
+当前步骤：`Step 1` `启动前本地自检`
 
 步骤清单：
 
@@ -392,12 +394,12 @@
 
 1. 打开 `docs/mvp-rules(swen).md`
 2. 打开 `docs/development-order(swen).md`
-3. 按本文件进入 `Phase 4`
-4. 优先实现 `POST /api/v1/jobs/verify`
+3. 按本文件进入 `Phase 5`
+4. 优先实现最小 Seller worker 和 `start / complete / fail` 回报链路
 
 ## 8. 不该做什么
 
-在 `Phase 4` 主链路跑通之前，不建议提前展开：
+在 `Phase 5` 主链路跑通之前，不建议提前展开：
 
 1. 真实链上合约实现
 2. 完整 SDK 封装
@@ -417,4 +419,5 @@
 - 数据层已落完
 - Seller 生命周期已完成
 - `quote` 已完成
-- 下一步进入 `verify(Mock)`
+- `verify(Mock)` 已完成
+- 下一步进入 `Seller worker`

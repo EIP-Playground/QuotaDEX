@@ -81,6 +81,7 @@ export async function POST(request: Request) {
     fingerprint,
     buyer_id: quoteRequest.buyer_id,
     seller_id: reservedSeller.id,
+    seller_reserved_at: reservedSeller.reserved_at,
     capability: quoteRequest.capability,
     amount: reservedSeller.price_per_task
   });

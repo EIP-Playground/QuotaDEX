@@ -37,6 +37,22 @@ export function serviceUnavailableResponse(
   return errorResponse(503, { error, code, details });
 }
 
+export function forbiddenResponse(
+  error: string,
+  code = "FORBIDDEN",
+  details?: Record<string, unknown>
+): NextResponse<ErrorPayload> {
+  return errorResponse(403, { error, code, details });
+}
+
+export function conflictResponse(
+  error: string,
+  code = "CONFLICT",
+  details?: Record<string, unknown>
+): NextResponse<ErrorPayload> {
+  return errorResponse(409, { error, code, details });
+}
+
 export function internalServerErrorResponse(
   error = "Internal Server Error",
   code = "INTERNAL_SERVER_ERROR",

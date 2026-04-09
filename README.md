@@ -2,7 +2,7 @@
 
 QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP uses a Gateway + Supabase + Redis + Escrow design so AI agents can buy and sell idle model quota through HTTP 402 interception and Web3 micro-payments on Kite AI.
 
-当前仓库已经从纯文档状态推进到 `Phase 4` 前夜：Gateway 骨架、Supabase schema、Seller 生命周期和 `quote` 拦截都已落地，下一步进入 `verify(Mock) -> seller execution -> result delivery` 的 Happy Path。
+当前仓库已经从纯文档状态推进到 `Phase 5` 前夜：Gateway 骨架、Supabase schema、Seller 生命周期、`quote` 拦截和 `verify(Mock)` 都已落地，下一步进入 `seller execution -> result delivery` 的 Happy Path。
 
 ## Read First
 
@@ -17,9 +17,9 @@ Before writing code, read these documents in order:
 
 Current delivery summary:
 
-- Current phase: `Phase 4 - verify (Mock)`
-- Current step: `Step 1/6` recompute `fingerprint`
-- Next milestone: create a formal `paid` job after mock payment verification
+- Current phase: `Phase 5 - seller worker`
+- Current step: `Step 1/6` local self-check before seller startup
+- Next milestone: let a seller receive a `paid` job and move it to `running`
 
 ## Finished Phases
 
@@ -31,6 +31,8 @@ Current delivery summary:
   - `register`, `heartbeat`, `offline`
 - `Phase 3 - quote`
   - request validation, seller reservation, `fingerprint`, Redis quote context, `402`
+- `Phase 4 - verify (Mock)`
+  - recompute `fingerprint`, load quote context, mock `tx_hash`, create `paid` job, move seller to `busy`
 
 ## Full Tracker
 
@@ -93,12 +95,20 @@ docs/
   - builds `fingerprint` and reuses it as `payment_id`
   - stores `quote:{payment_id}` in Redis
   - returns `402 Payment Required`
-- Job routes for `verify`, `start`, `complete`, `fail`, and polling still exist as scaffolds.
+- The `POST /api/v1/jobs/verify` route is implemented:
+  - recomputes `fingerprint` from the payload
+  - loads `quote:{payment_id}` from Redis
+  - performs mock `tx_hash` validation
+  - creates a formal `paid` job
+  - moves the seller from `reserved` to `busy`
+- Job routes for `start`, `complete`, `fail`, and polling still exist as scaffolds.
 - Shared helpers already exist for:
   - env loading
   - error responses
   - fingerprint generation
-  - quote parsing and seller reservation
+  - quote and verify parsing
+  - quote context storage and loading
+  - seller reservation and busy transitions
   - Redis access
   - Supabase access
   - seller request parsing
