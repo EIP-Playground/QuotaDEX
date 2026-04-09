@@ -59,12 +59,12 @@
 
 步骤清单：
 
-- `[x]` 初始化 `Next.js` 项目
-- `[x]` 建立 `app/api/v1` 目录
-- `[x]` 建立 `lib` 目录
-- `[x]` 建立 `supabase/migrations` 目录
-- `[x]` 建立基础环境变量管理
-- `[x]` 建立 README 与项目入口说明
+- `✓` 初始化 `Next.js` 项目
+- `✓` 建立 `app/api/v1` 目录
+- `✓` 建立 `lib` 目录
+- `✓` 建立 `supabase/migrations` 目录
+- `✓` 建立基础环境变量管理
+- `✓` 建立 README 与项目入口说明
 
 目标：
 
@@ -89,12 +89,12 @@
 
 步骤清单：
 
-- `[x]` 创建 `sellers` 表
-- `[x]` 创建 `jobs` 表
-- `[x]` 创建 `events` 表
-- `[x]` 为 `jobs` 加上 `payment_id`
-- `[x]` 为 `jobs.tx_hash` 加唯一约束
-- `[x]` 加入 Realtime publication 迁移逻辑
+- `✓` 创建 `sellers` 表
+- `✓` 创建 `jobs` 表
+- `✓` 创建 `events` 表
+- `✓` 为 `jobs` 加上 `payment_id`
+- `✓` 为 `jobs.tx_hash` 加唯一约束
+- `✓` 加入 Realtime publication 迁移逻辑
 
 目标：
 
@@ -119,10 +119,10 @@
 
 步骤清单：
 
-- `[x]` 实现 `POST /api/v1/sellers/register`
-- `[x]` 实现 `POST /api/v1/sellers/heartbeat`
-- `[x]` 实现 `POST /api/v1/sellers/offline`
-- `[x]` 接入 seller 请求体校验和错误返回
+- `✓` 实现 `POST /api/v1/sellers/register`
+- `✓` 实现 `POST /api/v1/sellers/heartbeat`
+- `✓` 实现 `POST /api/v1/sellers/offline`
+- `✓` 接入 seller 请求体校验和错误返回
 
 目标：
 
@@ -146,12 +146,12 @@
 
 步骤清单：
 
-- `[x]` Step 1: 校验 `buyer_id / capability / prompt`
-- `[x]` Step 2: 查找能力匹配且 `idle` 的 seller
-- `[x]` Step 3: 用数据库原子更新将 seller 置为 `reserved`
-- `[x]` Step 4: 生成 `fingerprint`
-- `[x]` Step 5: Redis 写入 `quote:{payment_id}`
-- `[x]` Step 6: 返回 `402 + payment_id + seller + amount`
+- `✓` Step 1: 校验 `buyer_id / capability / prompt`
+- `✓` Step 2: 查找能力匹配且 `idle` 的 seller
+- `✓` Step 3: 用数据库原子更新将 seller 置为 `reserved`
+- `✓` Step 4: 生成 `fingerprint`
+- `✓` Step 5: Redis 写入 `quote:{payment_id}`
+- `✓` Step 6: 返回 `402 + payment_id + seller + amount`
 
 目标：
 
@@ -182,12 +182,12 @@
 
 步骤清单：
 
-- `[x]` Step 1: 重算 `fingerprint`
-- `[x]` Step 2: 查 Redis 中的 quote 临时上下文
-- `[x]` Step 3: Mock 校验 `tx_hash`
-- `[x]` Step 4: 创建正式 `job`
-- `[x]` Step 5: 建立 `payment_id -> job_id` 映射
-- `[x]` Step 6: 将 seller 状态更新为 `busy`
+- `✓` Step 1: 重算 `fingerprint`
+- `✓` Step 2: 查 Redis 中的 quote 临时上下文
+- `✓` Step 3: Mock 校验 `tx_hash`
+- `✓` Step 4: 创建正式 `job`
+- `✓` Step 5: 建立 `payment_id -> job_id` 映射
+- `✓` Step 6: 将 seller 状态更新为 `busy`
 
 目标：
 
@@ -212,12 +212,12 @@
 
 步骤清单：
 
-- `[x]` Step 1: 启动前本地自检
-- `[x]` Step 2: 调用 `register`
-- `[x]` Step 3: 订阅属于自己的 job
-- `[x]` Step 4: 调用 `start`
-- `[x]` Step 5: 执行 handler
-- `[x]` Step 6: 调用 `complete` 或 `fail`
+- `✓` Step 1: 启动前本地自检
+- `✓` Step 2: 调用 `register`
+- `✓` Step 3: 订阅属于自己的 job
+- `✓` Step 4: 调用 `start`
+- `✓` Step 5: 执行 handler
+- `✓` Step 6: 调用 `complete` 或 `fail`
 
 目标：
 
@@ -242,10 +242,10 @@
 
 步骤清单：
 
-- `[x]` Step 1: 调 `quote`
-- `[x]` Step 2: 模拟支付
-- `[x]` Step 3: 调 `verify`
-- `[x]` Step 4: 订阅并等待结果
+- `✓` Step 1: 调 `quote`
+- `✓` Step 2: 模拟支付
+- `✓` Step 3: 调 `verify`
+- `✓` Step 4: 订阅并等待结果
 
 目标：
 
@@ -270,11 +270,11 @@
 
 步骤清单：
 
-- `[ ]` Step 1: 实现 Escrow 合约
-- `[ ]` Step 2: 接入 `deposit(payment_id, seller, amount)`
-- `[ ]` Step 3: 接真实 receipt 校验
-- `[ ]` Step 4: 接入 `release`
-- `[ ]` Step 5: 接入 `refund`
+- `○` Step 1: 实现 Escrow 合约
+- `○` Step 2: 接入 `deposit(payment_id, seller, amount)`
+- `○` Step 3: 接真实 receipt 校验
+- `○` Step 4: 接入 `release`
+- `○` Step 5: 接入 `refund`
 
 目标：
 
@@ -296,8 +296,8 @@
 
 步骤清单：
 
-- `[ ]` Step 1: 提炼 `buyer-sdk`
-- `[ ]` Step 2: 提炼 `seller-sdk`
+- `○` Step 1: 提炼 `buyer-sdk`
+- `○` Step 2: 提炼 `seller-sdk`
 
 目标：
 
@@ -318,10 +318,10 @@
 
 步骤清单：
 
-- `[ ]` Step 1: Dashboard 事件流
-- `[ ]` Step 2: seller 状态展示
-- `[ ]` Step 3: 超时处理
-- `[ ]` Step 4: 退款与重试
+- `○` Step 1: Dashboard 事件流
+- `○` Step 2: seller 状态展示
+- `○` Step 3: 超时处理
+- `○` Step 4: 退款与重试
 
 目标：
 
