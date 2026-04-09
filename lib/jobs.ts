@@ -26,6 +26,18 @@ export type VerifyRequestBody = {
   payload: QuoteRequestBody;
 };
 
+export type StartJobBody = {
+  seller_id: string;
+};
+
+export type CompleteJobBody = StartJobBody & {
+  result: unknown;
+};
+
+export type FailJobBody = StartJobBody & {
+  error: string;
+};
+
 type SellerCandidateRow = {
   id: string;
   capability: string;
@@ -45,6 +57,22 @@ export type CreatedPaidJob = {
   id: string;
   payment_id: string;
   status: "paid";
+};
+
+export type JobSnapshot = {
+  id: string;
+  seller_id: string;
+  status: "paid" | "running" | "done" | "failed";
+  payment_id: string;
+  payload: Record<string, unknown>;
+  result: unknown;
+};
+
+export type UpdatedJobStatus = {
+  id: string;
+  status: "running" | "done" | "failed";
+  seller_id: string;
+  result: unknown;
 };
 
 export class DuplicateVerificationError extends Error {
@@ -209,6 +237,42 @@ export function parseVerifyRequestBody(input: unknown): VerifyRequestBody {
   };
 }
 
+export function parseStartJobBody(input: unknown): StartJobBody {
+  if (!isRecord(input)) {
+    throw new Error("Request body must be a JSON object.");
+  }
+
+  return {
+    seller_id: readRequiredString(input, "seller_id")
+  };
+}
+
+export function parseCompleteJobBody(input: unknown): CompleteJobBody {
+  if (!isRecord(input)) {
+    throw new Error("Request body must be a JSON object.");
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(input, "result")) {
+    throw new Error("result is required.");
+  }
+
+  return {
+    seller_id: readRequiredString(input, "seller_id"),
+    result: input.result
+  };
+}
+
+export function parseFailJobBody(input: unknown): FailJobBody {
+  if (!isRecord(input)) {
+    throw new Error("Request body must be a JSON object.");
+  }
+
+  return {
+    seller_id: readRequiredString(input, "seller_id"),
+    error: readRequiredString(input, "error")
+  };
+}
+
 export function parseQuoteContextValue(input: unknown): QuoteContext {
   const value =
     typeof input === "string"
@@ -369,5 +433,94 @@ export async function deleteJob(jobId: string): Promise<void> {
 
   if (error) {
     throw new Error(`Failed to delete job ${jobId}: ${error.message}`);
+  }
+}
+
+export async function loadJobSnapshot(jobId: string): Promise<JobSnapshot | null> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("jobs")
+    .select("id, seller_id, status, payment_id, payload, result")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load job ${jobId}: ${error.message}`);
+  }
+
+  return (data as JobSnapshot | null) ?? null;
+}
+
+export async function updateJobStatusForSeller(params: {
+  jobId: string;
+  sellerId: string;
+  expectedStatus: "paid" | "running";
+  nextStatus: "running" | "done" | "failed";
+  result?: unknown;
+}): Promise<UpdatedJobStatus | null> {
+  const supabase = createServerSupabaseClient();
+  const updatePayload: {
+    status: "running" | "done" | "failed";
+    result?: unknown;
+  } = {
+    status: params.nextStatus
+  };
+
+  if (params.result !== undefined) {
+    updatePayload.result = params.result;
+  }
+
+  const { data, error } = await supabase
+    .from("jobs")
+    .update(updatePayload)
+    .eq("id", params.jobId)
+    .eq("seller_id", params.sellerId)
+    .eq("status", params.expectedStatus)
+    .select("id, status, seller_id, result")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to update job ${params.jobId}: ${error.message}`);
+  }
+
+  return (data as UpdatedJobStatus | null) ?? null;
+}
+
+export async function setSellerIdleAfterExecution(
+  sellerId: string
+): Promise<boolean> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("sellers")
+    .update({
+      status: "idle",
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", sellerId)
+    .eq("status", "busy")
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to release busy seller ${sellerId}: ${error.message}`);
+  }
+
+  return Boolean(data);
+}
+
+export async function logJobEvent(params: {
+  jobId: string;
+  type: string;
+  message: string;
+}): Promise<void> {
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.from("events").insert({
+    job_id: params.jobId,
+    type: params.type,
+    message: params.message
+  });
+
+  if (error) {
+    throw new Error(`Failed to log job event ${params.type}: ${error.message}`);
   }
 }
