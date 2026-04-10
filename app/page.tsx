@@ -27,6 +27,11 @@ const docs = [
     title: "Development Order",
     description: "Recommended phase-by-phase build sequence.",
     path: "docs/development-order(swen).md"
+  },
+  {
+    title: "Frontend Requirements",
+    description: "Business-facing page requirements for QuotaDEX and future PieBazaar integration.",
+    path: "docs/frontend-requirements(swen).md"
   }
 ];
 
