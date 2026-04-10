@@ -32,6 +32,11 @@ const docs = [
     title: "Frontend Requirements",
     description: "Business-facing page requirements for QuotaDEX and future PieBazaar integration.",
     path: "docs/frontend-requirements(swen).md"
+  },
+  {
+    title: "Payment Migration",
+    description: "Plan for moving the hackathon payment path from custom Escrow to Pieverse Facilitator.",
+    path: "docs/payment-migration-pieverse-facilitator(swen).md"
   }
 ];
 

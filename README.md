@@ -15,6 +15,7 @@ Before writing code, read these documents in order:
 3. [docs/development-order(swen).md](docs/development-order(swen).md)
 4. [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md)
 5. [docs/frontend-requirements(swen).md](docs/frontend-requirements(swen).md)
+6. [docs/payment-migration-pieverse-facilitator(swen).md](docs/payment-migration-pieverse-facilitator(swen).md)
 
 ## Current Phase
 
