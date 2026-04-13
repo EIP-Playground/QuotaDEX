@@ -4,6 +4,10 @@ import {
   internalServerErrorResponse,
   serviceUnavailableResponse
 } from "@/lib/errors";
+import {
+  buildX402AcceptEntry,
+  buildX402PaymentRequiredResponse
+} from "@/lib/chain/facilitator";
 import { getServerEnv } from "@/lib/env";
 import { buildFingerprint } from "@/lib/fingerprint";
 import {
@@ -125,6 +129,34 @@ export async function POST(request: Request) {
     });
   }
 
+  const accepts = [
+    buildX402AcceptEntry({
+      asset: env.PYUSD_CONTRACT_ADDRESS,
+      payTo: env.ESCROW_CONTRACT_ADDRESS,
+      maxAmountRequired: reservedSeller.price_per_task,
+      resource: "/api/v1/jobs/verify",
+      description: `QuotaDEX ${quoteRequest.capability} execution request`,
+      merchantName: "QuotaDEX Gateway",
+      outputSchema: {
+        type: "object",
+        properties: {
+          job_id: { type: "string" },
+          status: { type: "string" }
+        },
+        required: ["job_id", "status"]
+      },
+      extra: {
+        payment_id: paymentId,
+        seller_id: reservedSeller.id,
+        currency: QUOTE_CURRENCY
+      }
+    })
+  ];
+  const x402Payload = buildX402PaymentRequiredResponse({
+    accepts,
+    error: "Payment Required"
+  });
+
   return NextResponse.json(
     {
       error: "Payment Required",
@@ -135,7 +167,9 @@ export async function POST(request: Request) {
       amount: reservedSeller.price_per_task,
       currency: QUOTE_CURRENCY,
       seller_id: reservedSeller.id,
-      expires_in_seconds: QUOTE_CONTEXT_TTL_SECONDS
+      expires_in_seconds: QUOTE_CONTEXT_TTL_SECONDS,
+      accepts: x402Payload.accepts,
+      x402Version: x402Payload.x402Version
     },
     {
       status: 402
