@@ -85,8 +85,9 @@
 6. Seller worker
 7. Buyer 最小调用脚本
 8. 真实链上与 Escrow 合约
-9. SDK
-10. Dashboard 与稳定性补充
+9. Payment Migration to Pieverse Facilitator
+10. SDK
+11. Dashboard 与稳定性补充
 
 这个顺序的核心原则是：
 
@@ -308,11 +309,11 @@ Redis 只做两件事：
 1. 一次 Buyer 请求可以完整跑通主链路
 2. Buyer 最终能拿到 Seller 返回的结果
 
-## 11. Phase 7：接入真实链上与 Escrow 合约
+## 11. Phase 7：自定义 Escrow 链上原型
 
 ### 目标
 
-把前面的 Mock 支付替换成真实链上支付。
+把前面的 Mock 支付扩展成一条可运行的自定义 Escrow 链上原型。
 
 ### 需要完成的事
 
@@ -328,7 +329,34 @@ Redis 只做两件事：
 2. 如果前面的主链路还没通，就过早进入高复杂度区域
 3. 先 Mock，后真链，是更稳的 MVP 节奏
 
-## 12. Phase 8：再做 SDK
+### 这一阶段的定位
+
+1. 这是自定义 Escrow 方案的链上原型
+2. 它证明 QuotaDEX 能走通真实链上支付闭环
+3. 但它不是当前黑客松主支付路线的最终标准答案
+
+## 12. Phase 8：Payment Migration to Pieverse Facilitator
+
+### 为什么要插入这一阶段
+
+1. 当前黑客松主线已经从自定义 Escrow 原型转向 Kite 官方更推荐的支付路线
+2. 如果现在直接提炼 SDK，很容易把旧支付路径封进 SDK，后面返工
+3. 所以在 SDK 之前，先完成 facilitator 支付迁移更合理
+
+### 这一阶段要做什么
+
+1. 新增 facilitator helper
+2. 调整 `quote` 的 x402 风格返回
+3. 引入 facilitator 专用环境变量
+4. 在 `verify` 中接入 facilitator `verify / settle`
+5. 跑通新的 facilitator E2E
+
+### 这一阶段的本质
+
+1. 不推翻现有主链路
+2. 而是把比赛主支付路径切换到更贴近官方推荐的标准
+
+## 13. Phase 9：再做 SDK
 
 ### 这一步到底是在做什么
 
@@ -349,7 +377,7 @@ Redis 只做两件事：
 1. 不是新增核心业务能力
 2. 而是把已经验证过的流程产品化、可复用化
 
-## 13. Phase 9：Dashboard 与稳定性补充
+## 14. Phase 10：Dashboard 与稳定性补充
 
 ### 目标
 
@@ -364,7 +392,7 @@ Redis 只做两件事：
 5. 重试策略
 6. 基础监控与日志完善
 
-## 14. 当前最重要的里程碑
+## 15. 当前最重要的里程碑
 
 第一阶段最重要的 milestone 不是：
 
@@ -382,15 +410,15 @@ Redis 只做两件事：
 
 只要这个闭环成立，项目就从“概念设计”进入“可运行原型”。
 
-## 15. 给团队和 AI 的执行建议
+## 16. 给团队和 AI 的执行建议
 
 1. 开发前先读 `docs/mvp-rules(swen).md`
 2. 再读本文件，按阶段推进
 3. 不要跳阶段开发
-4. 不要先做 SDK、Dashboard、复杂容错
+4. 不要在 facilitator 迁移完成前先做 SDK、Dashboard、复杂容错
 5. 第一优先级永远是主链路闭环
 
-## 16. 一句话总结
+## 17. 一句话总结
 
 当前正确的开发路线是：
 
@@ -398,4 +426,5 @@ Redis 只做两件事：
 2. 再做 Seller 接单和 Buyer 调用
 3. 先用 Mock 跑通支付闭环
 4. 再接真实链上
-5. 最后再把流程封装成 SDK，并补 Dashboard 和稳定性
+5. 再把比赛主支付路径迁移到 Pieverse Facilitator
+6. 最后再把流程封装成 SDK，并补 Dashboard 和稳定性

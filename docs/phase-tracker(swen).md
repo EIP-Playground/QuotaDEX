@@ -6,7 +6,7 @@
 > - `docs/mvp-rules(swen).md`
 > - `docs/development-order(swen).md`
 
-当前：`Phase 8 / Step 1` `提炼 buyer-sdk`
+当前：`Phase 8 / Step 3` `对齐 facilitator 的 quote/payment metadata`
 
 最近验收：`Mock E2E passed`
 - `quote -> verify(mock) -> seller done -> buyer final result`
@@ -35,13 +35,16 @@
 [Phase 6 Buyer demo | quote / pay / verify / wait result]     DONE
         |
         v
-[Phase 7 Real chain + Escrow | deposit / receipt / release / refund] DONE
+[Phase 7 Custom Escrow real-chain prototype | deposit / receipt / release / refund] DONE
         |
         v
-[Phase 8 SDK | buyer-sdk / seller-sdk / 封装流程] NEXT
+[Phase 8 Payment Migration | facilitator / x402 / verify / settle] NEXT
         |
         v
-[Phase 9 Dashboard + Stability | 事件流 / 超时 / 退款 / 重试]
+[Phase 9 SDK | buyer-sdk / seller-sdk / 封装流程]
+        |
+        v
+[Phase 10 Dashboard + Stability | 事件流 / 超时 / 退款 / 重试]
 ```
 
 ## 2. 状态图例
@@ -261,7 +264,7 @@
 3. 调 `verify`
 4. 通过 Realtime + 轮询 Fallback 等待 job 结果
 
-### Phase 7：Real chain + Escrow
+### Phase 7：Custom Escrow real-chain prototype
 
 状态：`DONE`
 
@@ -279,7 +282,7 @@
 
 目标：
 
-- 把 Mock 支付替换成真实链上流程
+- 做出一条基于自定义 Escrow 的真实链上支付原型
 
 已完成内容：
 
@@ -289,24 +292,32 @@
 4. `complete -> release`
 5. `fail -> refund`
 
-### Phase 8：SDK
+说明：
+
+- 这一阶段完成的是自定义 Escrow 链上原型
+- 它不是当前黑客松主支付路线的最终验收版本
+
+### Phase 8：Payment Migration to Pieverse Facilitator
 
 状态：`NEXT`
 
-关键词：`buyer-sdk` `seller-sdk` `封装` `复用` `接入库`
+关键词：`facilitator` `x402` `X-PAYMENT` `verify` `settle`
 
-步骤进度：`0/2 done`
+步骤进度：`2/5 done`
 
-当前步骤：`Step 1` `提炼 buyer-sdk`
+当前步骤：`Step 3` `对齐 facilitator 的 quote/payment metadata`
 
 步骤清单：
 
-- `○` Step 1: 提炼 `buyer-sdk`
-- `○` Step 2: 提炼 `seller-sdk`
+- `✓` Step 1: 新增 `lib/chain/facilitator.ts`
+- `✓` Step 2: 给 `quote` 增加 x402 风格的 `accepts`
+- `○` Step 3: 对齐 facilitator 的 `asset / payTo / env`
+- `○` Step 4: `verify` 接入 facilitator `verify / settle`
+- `○` Step 5: 跑一轮 facilitator E2E
 
 目标：
 
-- 把已经跑通的流程提炼为 `buyer-sdk` 和 `seller-sdk`
+- 把比赛主支付路径从自定义 Escrow 原型迁移到更贴近官方推荐的 Pieverse Facilitator 路线
 
 进入 Phase 8 前的最新验收结果：
 
@@ -316,10 +327,27 @@
 
 注意：
 
-- 这是工程化封装阶段
-- 不是第一条主链路成立之前要做的事
+- 当前主路径仍保留旧字段兼容，避免打断现有 demo
+- `Escrow` 代码保留，但不再作为比赛主支付路径继续扩展
 
-### Phase 9：Dashboard + Stability
+### Phase 9：SDK
+
+状态：`LATER`
+
+关键词：`buyer-sdk` `seller-sdk` `封装` `复用` `接入库`
+
+步骤进度：`0/2 done`
+
+步骤清单：
+
+- `○` Step 1: 提炼 `buyer-sdk`
+- `○` Step 2: 提炼 `seller-sdk`
+
+目标：
+
+- 把已经稳定的支付与执行流程提炼为可复用 SDK
+
+### Phase 10：Dashboard + Stability
 
 状态：`LATER`
 
@@ -351,12 +379,12 @@
 
 1. 打开 `docs/mvp-rules(swen).md`
 2. 打开 `docs/development-order(swen).md`
-3. 按本文件进入 `Phase 7`
-4. 优先提炼 `buyer-sdk`，然后再提炼 `seller-sdk`
+3. 按本文件进入 `Phase 8`
+4. 先完成 facilitator 支付迁移，再进入 `Phase 9 SDK`
 
 ## 5. 不该做什么
 
-在 `Phase 7` 主链路跑通之前，不建议提前展开：
+在 `Phase 8` facilitator 迁移完成之前，不建议提前展开：
 
 1. 完整 SDK 封装
 2. Dashboard
@@ -379,5 +407,5 @@
 - `verify(Mock)` 已完成
 - `Seller worker` 已完成
 - `Buyer demo` 已完成
-- `Real chain + Escrow` 已完成
-- 下一步进入 `SDK`
+- `Custom Escrow real-chain prototype` 已完成
+- 当前进入 `Payment Migration to Pieverse Facilitator`

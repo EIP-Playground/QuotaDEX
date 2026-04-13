@@ -4,7 +4,7 @@ QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP use
 
 PieBazaar is the planned parent Agent Marketplace for the broader vision. Its positioning is an Agent Marketplace that showcases the Accountable Agent Commerce Layer. QuotaDEX is the first vertical service planned inside that future PieBazaar marketplace.
 
-当前仓库已经完成 `Phase 7`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、Escrow 合约骨架、真实 `deposit`、receipt 校验、`release`、`refund` 都已落地，下一步进入 SDK 提炼。
+当前仓库已经完成 `Phase 7`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、Escrow 合约骨架、真实 `deposit`、receipt 校验、`release`、`refund` 都已落地。当前黑客松主线已切换到 `Phase 8`：支付迁移到 Pieverse Facilitator，SDK 提炼顺延到迁移完成之后。
 
 ## Read First
 
@@ -21,9 +21,9 @@ Before writing code, read these documents in order:
 
 Current delivery summary:
 
-- Current phase: `Phase 8 - SDK`
-- Current step: `Step 1/2` extract `buyer-sdk`
-- Next milestone: package the buyer happy path into a reusable SDK entry
+- Current phase: `Phase 8 - Payment Migration`
+- Current step: `Step 3/5` align quote metadata with facilitator route
+- Next milestone: add facilitator-backed verify flow
 - Latest checkpoint: `Mock E2E passed`
   - `quote -> verify(mock) -> seller done -> buyer final result`
 
@@ -43,7 +43,7 @@ Current delivery summary:
   - self-check, register, heartbeat, Realtime subscribe, `start`, `complete`, `fail`
 - `Phase 6 - buyer demo`
   - `quote`, mock pay, `verify`, Realtime wait, polling fallback
-- `Phase 7 - real chain + Escrow`
+- `Phase 7 - custom Escrow real-chain prototype`
   - Escrow contract, real `deposit`, receipt validation, `release`, `refund`
 - `Mock E2E checkpoint`
   - local Gateway + Supabase + Redis + seller worker + buyer demo passed end to end
