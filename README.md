@@ -191,8 +191,11 @@ These variables come from four places:
   It is used when building the request fingerprint and should stay server-side only.
 
 - `Blockchain config`
-  These values are used later for real payment verification and Escrow contract operations.
+  These values are used later for real payment verification, Facilitator-based payment migration, and Escrow contract operations.
   - `KITE_RPC_URL`: the RPC endpoint for the Kite network
+  - `PIEVERSE_FACILITATOR_BASE_URL`: the Pieverse facilitator base URL
+  - `KITE_PAYMENT_ASSET_ADDRESS`: the payment asset address used for the facilitator/x402 path
+  - `GATEWAY_MERCHANT_WALLET`: the merchant wallet address that receives facilitator-settled funds
   - `PYUSD_CONTRACT_ADDRESS`: the PYUSD token contract address
   - `PYUSD_DECIMALS`: token decimals, default `6` for PYUSD in the demo flow
   - `ESCROW_CONTRACT_ADDRESS`: your deployed Escrow contract address
@@ -213,6 +216,9 @@ UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 GATEWAY_SALT=
 KITE_RPC_URL=
+PIEVERSE_FACILITATOR_BASE_URL=https://facilitator.pieverse.io
+KITE_PAYMENT_ASSET_ADDRESS=
+GATEWAY_MERCHANT_WALLET=
 PYUSD_CONTRACT_ADDRESS=
 PYUSD_DECIMALS=6
 ESCROW_CONTRACT_ADDRESS=

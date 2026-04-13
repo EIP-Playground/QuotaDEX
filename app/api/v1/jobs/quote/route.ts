@@ -131,8 +131,8 @@ export async function POST(request: Request) {
 
   const accepts = [
     buildX402AcceptEntry({
-      asset: env.PYUSD_CONTRACT_ADDRESS,
-      payTo: env.ESCROW_CONTRACT_ADDRESS,
+      asset: env.KITE_PAYMENT_ASSET_ADDRESS,
+      payTo: env.GATEWAY_MERCHANT_WALLET,
       maxAmountRequired: reservedSeller.price_per_task,
       resource: "/api/v1/jobs/verify",
       description: `QuotaDEX ${quoteRequest.capability} execution request`,
