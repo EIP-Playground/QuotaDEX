@@ -68,6 +68,7 @@ h2 {
 
 .grid {
   display: grid;
+  align-items: start;
   gap: 20px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   margin-bottom: 20px;
@@ -195,6 +196,10 @@ h2 {
   background: rgb(5 9 18 / 35%);
 }
 
+.receiptFieldWide {
+  grid-column: span 2;
+}
+
 .receiptLabel {
   color: var(--muted);
   font-size: 0.82rem;
@@ -208,6 +213,17 @@ h2 {
 
 .wrapValue {
   word-break: break-all;
+}
+
+.scrollValue {
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .receiptFieldWide {
+    grid-column: span 1;
+  }
 }
 
 .field {

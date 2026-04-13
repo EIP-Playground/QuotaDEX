@@ -409,9 +409,9 @@ export function AgentMartDemoClient() {
             <h2>402 response snapshot</h2>
           </div>
           <div className="receiptGrid">
-            <div className="receiptField">
+            <div className="receiptField receiptFieldWide">
               <span className="receiptLabel">payment_id</span>
-              <span className="receiptValue">{quote?.payment_id ?? "pending"}</span>
+              <span className="receiptValue wrapValue">{quote?.payment_id ?? "pending"}</span>
             </div>
             <div className="receiptField">
               <span className="receiptLabel">amount</span>
@@ -421,9 +421,9 @@ export function AgentMartDemoClient() {
               <span className="receiptLabel">currency</span>
               <span className="receiptValue">{quote?.currency ?? "pending"}</span>
             </div>
-            <div className="receiptField">
+            <div className="receiptField receiptFieldWide">
               <span className="receiptLabel">pay_to</span>
-              <span className="receiptValue wrapValue">{quote?.pay_to ?? "pending"}</span>
+              <span className="receiptValue scrollValue">{quote?.pay_to ?? "pending"}</span>
             </div>
           </div>
         </article>
