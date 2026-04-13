@@ -64,6 +64,7 @@ export type JobSnapshot = {
   seller_id: string;
   status: "paid" | "running" | "done" | "failed";
   payment_id: string;
+  tx_hash: string | null;
   payload: Record<string, unknown>;
   result: unknown;
 };
@@ -440,7 +441,7 @@ export async function loadJobSnapshot(jobId: string): Promise<JobSnapshot | null
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("jobs")
-    .select("id, seller_id, status, payment_id, payload, result")
+    .select("id, seller_id, status, payment_id, tx_hash, payload, result")
     .eq("id", jobId)
     .maybeSingle();
 

@@ -6,7 +6,10 @@ import {
   internalServerErrorResponse,
   notFoundResponse
 } from "@/lib/errors";
-import { executeEscrowGatewayAction } from "@/lib/chain/escrow";
+import {
+  executeEscrowGatewayAction,
+  looksLikeOnChainTxHash
+} from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
 import {
   loadJobSnapshot,
@@ -117,64 +120,89 @@ export async function POST(request: Request, context: RouteContext) {
         tx_hash: string;
       }
     | {
+        status: "skipped";
+        reason: "mock_payment";
+      }
+    | {
         status: "failed";
         error: string;
       };
 
-  try {
-    const refund = await executeEscrowGatewayAction({
-      action: "refund",
-      paymentId: jobSnapshot.payment_id,
-      rpcUrl: env.KITE_RPC_URL,
-      escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-      gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
-    });
-
+  if (!jobSnapshot.tx_hash || !looksLikeOnChainTxHash(jobSnapshot.tx_hash)) {
     refundStatus = {
-      status: "refunded",
-      tx_hash: refund.txHash
+      status: "skipped",
+      reason: "mock_payment"
     };
 
     try {
       await logJobEvent({
         jobId: id,
-        type: "REFUNDED",
-        message: `Escrow refunded payment ${jobSnapshot.payment_id} for job ${id}.`
+        type: "REFUND_SKIPPED",
+        message: `Escrow refund skipped for mock payment ${jobSnapshot.payment_id}.`
       });
     } catch (error) {
-      console.error("Failed to log refund event", {
+      console.error("Failed to log skipped refund event", {
         jobId: id,
         paymentId: jobSnapshot.payment_id,
         reason: error instanceof Error ? error.message : "Unknown event error."
       });
     }
-  } catch (error) {
-    const refundErrorMessage =
-      error instanceof Error ? error.message : "Unknown escrow refund error.";
-
-    refundStatus = {
-      status: "failed",
-      error: refundErrorMessage
-    };
-
-    console.error("Failed to refund escrow after job failure", {
-      jobId: id,
-      paymentId: jobSnapshot.payment_id,
-      reason: refundErrorMessage
-    });
-
+  } else {
     try {
-      await logJobEvent({
-        jobId: id,
-        type: "REFUND_FAILED",
-        message: `Escrow refund failed for payment ${jobSnapshot.payment_id}: ${refundErrorMessage}`
+      const refund = await executeEscrowGatewayAction({
+        action: "refund",
+        paymentId: jobSnapshot.payment_id,
+        rpcUrl: env.KITE_RPC_URL,
+        escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
+        gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
       });
-    } catch (eventError) {
-      console.error("Failed to log refund failure event", {
+
+      refundStatus = {
+        status: "refunded",
+        tx_hash: refund.txHash
+      };
+
+      try {
+        await logJobEvent({
+          jobId: id,
+          type: "REFUNDED",
+          message: `Escrow refunded payment ${jobSnapshot.payment_id} for job ${id}.`
+        });
+      } catch (error) {
+        console.error("Failed to log refund event", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: error instanceof Error ? error.message : "Unknown event error."
+        });
+      }
+    } catch (error) {
+      const refundErrorMessage =
+        error instanceof Error ? error.message : "Unknown escrow refund error.";
+
+      refundStatus = {
+        status: "failed",
+        error: refundErrorMessage
+      };
+
+      console.error("Failed to refund escrow after job failure", {
         jobId: id,
         paymentId: jobSnapshot.payment_id,
-        reason: eventError instanceof Error ? eventError.message : "Unknown event error."
+        reason: refundErrorMessage
       });
+
+      try {
+        await logJobEvent({
+          jobId: id,
+          type: "REFUND_FAILED",
+          message: `Escrow refund failed for payment ${jobSnapshot.payment_id}: ${refundErrorMessage}`
+        });
+      } catch (eventError) {
+        console.error("Failed to log refund failure event", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: eventError instanceof Error ? eventError.message : "Unknown event error."
+        });
+      }
     }
   }
 

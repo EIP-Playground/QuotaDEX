@@ -6,7 +6,10 @@ import {
   internalServerErrorResponse,
   notFoundResponse
 } from "@/lib/errors";
-import { executeEscrowGatewayAction } from "@/lib/chain/escrow";
+import {
+  executeEscrowGatewayAction,
+  looksLikeOnChainTxHash
+} from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
 import {
   loadJobSnapshot,
@@ -115,64 +118,89 @@ export async function POST(request: Request, context: RouteContext) {
         tx_hash: string;
       }
     | {
+        status: "skipped";
+        reason: "mock_payment";
+      }
+    | {
         status: "failed";
         error: string;
       };
 
-  try {
-    const release = await executeEscrowGatewayAction({
-      action: "release",
-      paymentId: jobSnapshot.payment_id,
-      rpcUrl: env.KITE_RPC_URL,
-      escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-      gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
-    });
-
+  if (!jobSnapshot.tx_hash || !looksLikeOnChainTxHash(jobSnapshot.tx_hash)) {
     releaseStatus = {
-      status: "released",
-      tx_hash: release.txHash
+      status: "skipped",
+      reason: "mock_payment"
     };
 
     try {
       await logJobEvent({
         jobId: id,
-        type: "RELEASED",
-        message: `Escrow released payment ${jobSnapshot.payment_id} for job ${id}.`
+        type: "RELEASE_SKIPPED",
+        message: `Escrow release skipped for mock payment ${jobSnapshot.payment_id}.`
       });
     } catch (error) {
-      console.error("Failed to log release event", {
+      console.error("Failed to log skipped release event", {
         jobId: id,
         paymentId: jobSnapshot.payment_id,
         reason: error instanceof Error ? error.message : "Unknown event error."
       });
     }
-  } catch (error) {
-    const releaseErrorMessage =
-      error instanceof Error ? error.message : "Unknown escrow release error.";
-
-    releaseStatus = {
-      status: "failed",
-      error: releaseErrorMessage
-    };
-
-    console.error("Failed to release escrow after job completion", {
-      jobId: id,
-      paymentId: jobSnapshot.payment_id,
-      reason: releaseErrorMessage
-    });
-
+  } else {
     try {
-      await logJobEvent({
-        jobId: id,
-        type: "RELEASE_FAILED",
-        message: `Escrow release failed for payment ${jobSnapshot.payment_id}: ${releaseErrorMessage}`
+      const release = await executeEscrowGatewayAction({
+        action: "release",
+        paymentId: jobSnapshot.payment_id,
+        rpcUrl: env.KITE_RPC_URL,
+        escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
+        gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
       });
-    } catch (eventError) {
-      console.error("Failed to log release failure event", {
+
+      releaseStatus = {
+        status: "released",
+        tx_hash: release.txHash
+      };
+
+      try {
+        await logJobEvent({
+          jobId: id,
+          type: "RELEASED",
+          message: `Escrow released payment ${jobSnapshot.payment_id} for job ${id}.`
+        });
+      } catch (error) {
+        console.error("Failed to log release event", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: error instanceof Error ? error.message : "Unknown event error."
+        });
+      }
+    } catch (error) {
+      const releaseErrorMessage =
+        error instanceof Error ? error.message : "Unknown escrow release error.";
+
+      releaseStatus = {
+        status: "failed",
+        error: releaseErrorMessage
+      };
+
+      console.error("Failed to release escrow after job completion", {
         jobId: id,
         paymentId: jobSnapshot.payment_id,
-        reason: eventError instanceof Error ? eventError.message : "Unknown event error."
+        reason: releaseErrorMessage
       });
+
+      try {
+        await logJobEvent({
+          jobId: id,
+          type: "RELEASE_FAILED",
+          message: `Escrow release failed for payment ${jobSnapshot.payment_id}: ${releaseErrorMessage}`
+        });
+      } catch (eventError) {
+        console.error("Failed to log release failure event", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: eventError instanceof Error ? eventError.message : "Unknown event error."
+        });
+      }
     }
   }
 

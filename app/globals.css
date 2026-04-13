@@ -73,12 +73,225 @@ h2 {
   margin-bottom: 20px;
 }
 
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.actionsTight {
+  margin-top: 8px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  font-weight: 600;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+}
+
+.buttonPrimary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #07111f;
+}
+
+.buttonSecondary {
+  background: rgb(18 26 48 / 88%);
+  color: var(--text);
+}
+
 .card {
   border: 1px solid var(--border);
   border-radius: 18px;
   background: rgb(18 26 48 / 88%);
   padding: 24px;
   box-shadow: 0 16px 40px rgb(0 0 0 / 20%);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionLabel {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.sectionStack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bodyText {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.compact {
+  margin-top: 4px;
+}
+
+.twoColumnList {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.orderedList {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.8;
+}
+
+.receiptGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.receiptField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgb(5 9 18 / 35%);
+}
+
+.receiptLabel {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.receiptValue {
+  font-weight: 600;
+}
+
+.wrapValue {
+  word-break: break-all;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fieldLabel {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgb(5 9 18 / 55%);
+  color: var(--text);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.buttonReset {
+  cursor: pointer;
+  font: inherit;
+}
+
+.buttonReset:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.errorText {
+  margin: 0;
+  color: #ff8b8b;
+  line-height: 1.6;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timelineItem {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.timelineMarker {
+  width: 14px;
+  height: 14px;
+  margin-top: 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgb(5 9 18 / 55%);
+}
+
+.timelineItemactive .timelineMarker {
+  background: #f0be5d;
+  border-color: #f0be5d;
+}
+
+.timelineItemdone .timelineMarker {
+  background: #5ed29b;
+  border-color: #5ed29b;
+}
+
+.timelineItemfailed .timelineMarker {
+  background: #ff8b8b;
+  border-color: #ff8b8b;
+}
+
+.timelineContent {
+  min-width: 0;
 }
 
 ul {

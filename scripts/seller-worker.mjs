@@ -205,6 +205,7 @@ async function processPendingJobs(config, supabase, activeJobs) {
 async function main() {
   const config = getWorkerConfig();
   const activeJobs = new Set();
+  let lastRealtimeStatus = null;
 
   await selfCheck(config);
   console.log("[worker] self-check passed");
@@ -249,7 +250,19 @@ async function main() {
       }
     )
     .subscribe((status) => {
-      console.log(`[worker] realtime status: ${status}`);
+      if (status !== lastRealtimeStatus) {
+        if (status === "SUBSCRIBED") {
+          console.log(`[worker] realtime status: ${status}`);
+        } else if (status === "TIMED_OUT" || status === "CHANNEL_ERROR") {
+          console.warn(
+            `[worker] realtime status: ${status} (polling fallback still active)`
+          );
+        } else {
+          console.log(`[worker] realtime status: ${status}`);
+        }
+
+        lastRealtimeStatus = status;
+      }
 
       if (status === "SUBSCRIBED") {
         void processPendingJobs(config, supabase, activeJobs).catch((error) => {
