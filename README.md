@@ -2,7 +2,7 @@
 
 QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP uses a Gateway + Supabase + Redis + Escrow design so AI agents can buy and sell idle model quota through HTTP 402 interception and Web3 micro-payments on Kite AI.
 
-AgentMart is the planned parent Agent Marketplace for the broader vision. Its positioning is an Agent Marketplace that showcases the Accountable Agent Commerce Layer. QuotaDEX is the first vertical service planned inside that future AgentMart marketplace.
+AgentBazaar is the planned parent Agent Marketplace for the broader vision. Its positioning is an Agent Marketplace that showcases the Accountable Agent Commerce Layer. QuotaDEX is the first vertical service planned inside that future AgentBazaar marketplace.
 
 当前仓库已经完成 `Phase 7`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、Escrow 合约骨架、真实 `deposit`、receipt 校验、`release`、`refund` 都已落地。当前黑客松主线已切换到 `Phase 8`：支付迁移到 Pieverse Facilitator，SDK 提炼顺延到迁移完成之后。
 
