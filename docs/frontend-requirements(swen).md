@@ -1,16 +1,16 @@
 # QuotaDEX 前端需求说明（swen）
 
 > 日期：2026-04-10
-> 目的：定义 QuotaDEX 当前业务前端页面的需求边界，并为未来接入 PieBazaar Marketplace 预留清晰的信息架构。
+> 目的：定义 QuotaDEX 当前业务前端页面的需求边界，并为未来接入 AgentBazaar Marketplace 预留清晰的信息架构。
 > 适用范围：当前仓库的人类可见业务前端，不包含 SDK、合约、Gateway API 细节实现。
 
 ## 1. 产品关系与范围
 
 ### 1.1 产品关系
 
-1. `PieBazaar` 是未来的上位平台。
-2. `PieBazaar` 的定位是：一个用于展示 `Accountable Agent Commerce Layer` 的 `Agent Marketplace`。
-3. `QuotaDEX` 是未来 `PieBazaar` 中规划的第一个垂直服务。
+1. `AgentBazaar` 是未来的上位平台。
+2. `AgentBazaar` 的定位是：一个用于展示 `Accountable Agent Commerce Layer` 的 `Agent Marketplace`。
+3. `QuotaDEX` 是未来 `AgentBazaar` 中规划的第一个垂直服务。
 
 ### 1.2 当前前端要解决的问题
 
@@ -24,7 +24,7 @@
 
 当前前端不应提前承担以下目标：
 
-1. 不做完整开放的 `PieBazaar` 多产品商城系统。
+1. 不做完整开放的 `AgentBazaar` 多产品商城系统。
 2. 不做复杂账号体系、评论体系、购物车、订单中心。
 3. 不做完整 Seller 自助后台。
 4. 不做 CMS、运营后台、复杂增长组件。
@@ -64,7 +64,7 @@
 3. “按年订阅购买插件”的信息结构
 4. 以评分和评论为主的信任体系
 
-QuotaDEX / PieBazaar 前端更适合替换成：
+QuotaDEX / AgentBazaar 前端更适合替换成：
 
 1. `Open App`
 2. `Start Demo`
@@ -88,7 +88,7 @@ QuotaDEX / PieBazaar 前端更适合替换成：
 
 前端应该按照两层来设计：
 
-1. `PieBazaar Marketplace` 层
+1. `AgentBazaar Marketplace` 层
    - 展示多个垂直产品
    - 当前只有 `QuotaDEX`
    - 未来可继续增加其他垂直服务
@@ -104,10 +104,10 @@ QuotaDEX / PieBazaar 前端更适合替换成：
 
 ```text
 /
-  PieBazaar / QuotaDEX 入口页
+  AgentBazaar / QuotaDEX 入口页
 
 /products
-  PieBazaar Marketplace 列表页
+  AgentBazaar Marketplace 列表页
 
 /products/quotadex
   QuotaDEX 产品详情页
@@ -124,7 +124,7 @@ QuotaDEX / PieBazaar 前端更适合替换成：
 因为当前仓库还是 `QuotaDEX` 单产品仓库，所以可以先采用下面的短期策略：
 
 1. 当前首页先作为 `QuotaDEX` 的产品入口页。
-2. 页面文案中明确说明 `QuotaDEX` 属于未来 `PieBazaar Marketplace`。
+2. 页面文案中明确说明 `QuotaDEX` 属于未来 `AgentBazaar Marketplace`。
 3. UI 结构预留未来 `Marketplace` 的入口和产品卡片样式。
 4. 真正的 `/products` 多产品列表可以后续补，不要求当前一次性做完。
 
@@ -136,14 +136,14 @@ QuotaDEX / PieBazaar 前端更适合替换成：
 
 页面目标：
 
-1. 让用户理解 `PieBazaar` 是什么。
+1. 让用户理解 `AgentBazaar` 是什么。
 2. 让用户看到 `QuotaDEX` 是第一个垂直产品。
 3. 为未来更多产品预留统一展示方式。
 
 页面内容要求：
 
 1. 顶部 Hero
-   - 一句话解释 `PieBazaar`
+   - 一句话解释 `AgentBazaar`
    - 一句话说明 `QuotaDEX` 是第一个垂直服务
    - 一个主 CTA：进入 `QuotaDEX`
 
@@ -230,7 +230,7 @@ QuotaDEX / PieBazaar 前端更适合替换成：
 
 9. Related Products 区
    - 当前先展示未来产品占位卡
-   - 目的是保持未来 `PieBazaar` 的信息架构一致
+   - 目的是保持未来 `AgentBazaar` 的信息架构一致
 
 ### 4.3 页面三：QuotaDEX Console
 
@@ -292,7 +292,7 @@ QuotaDEX / PieBazaar 前端更适合替换成：
 建议优先抽象这些组件，方便后续复用：
 
 1. `ProductCard`
-   - 用在未来 `PieBazaar Marketplace`
+   - 用在未来 `AgentBazaar Marketplace`
 
 2. `ProductHero`
    - 用在 `QuotaDEX` 详情页
@@ -384,7 +384,7 @@ QuotaDEX / PieBazaar 前端更适合替换成：
 如果前端做到下面这些，就算满足当前阶段需要：
 
 1. 用户进入页面后，5 秒内能理解：
-   - `PieBazaar` 是上位 Marketplace
+   - `AgentBazaar` 是上位 Marketplace
    - `QuotaDEX` 是第一个垂直服务
 
 2. 用户能从页面中找到明确入口：
@@ -404,7 +404,7 @@ QuotaDEX / PieBazaar 前端更适合替换成：
    - `job` 状态变化
    - 最终结果
 
-5. 当前页面结构未来能自然扩成 `PieBazaar Marketplace`，而不用全部推翻。
+5. 当前页面结构未来能自然扩成 `AgentBazaar Marketplace`，而不用全部推翻。
 
 ## 9. 当前推荐实施顺序
 
@@ -412,17 +412,17 @@ QuotaDEX / PieBazaar 前端更适合替换成：
 
 1. 先做 `QuotaDEX` 产品详情页
 2. 再做 `QuotaDEX Console`
-3. 再补 `PieBazaar Marketplace` 列表页
+3. 再补 `AgentBazaar Marketplace` 列表页
 4. 最后做 `Dashboard` 和更完整的数据面板
 
 原因：
 
 1. 当前仓库仍是单产品仓库
 2. `QuotaDEX` 业务链路已经跑通，最值得先可视化
-3. 真正的多产品 `PieBazaar` 还没到需要优先落地的阶段
+3. 真正的多产品 `AgentBazaar` 还没到需要优先落地的阶段
 
 ## 10. 一句话总结
 
 当前前端的正确方向不是“先做一个复杂商城”，而是：
 
-**先做一个能清晰解释 QuotaDEX、能演示链路、并且未来能自然接入 PieBazaar Marketplace 的业务前端。**
+**先做一个能清晰解释 QuotaDEX、能演示链路、并且未来能自然接入 AgentBazaar Marketplace 的业务前端。**

@@ -30,7 +30,7 @@ const docs = [
   },
   {
     title: "Frontend Requirements",
-    description: "Business-facing page requirements for QuotaDEX and future PieBazaar integration.",
+    description: "Business-facing page requirements for QuotaDEX and future AgentBazaar integration.",
     path: "docs/frontend-requirements(swen).md"
   },
   {
@@ -48,7 +48,7 @@ export default function HomePage() {
         <h1>A gateway skeleton for the MVP marketplace.</h1>
         <p className="lead">
           QuotaDEX is the first vertical service planned for the future
-          PieBazaar marketplace. PieBazaar is positioned as an Agent
+          AgentBazaar marketplace. AgentBazaar is positioned as an Agent
           Marketplace that showcases the Accountable Agent Commerce Layer.
         </p>
       </section>

@@ -10,7 +10,7 @@
 
 - **产品名称**：QuotaDEX
 - **所属平台**：AgentBazaar（规划中的 Agent Marketplace）
-- **PieBazaar 定位**：一个用于展示 Accountable Agent Commerce Layer 的 Agent Marketplace
+- **AgentBazaar 定位**：一个用于展示 Accountable Agent Commerce Layer 的 Agent Marketplace
 - **产品定位**：基于 API Gateway 模式构建的"闲置 AI 额度"交易撮合平台
 - **当前关系**：QuotaDEX 是未来 AgentBazaar 中规划的第一个垂直服务
 - **核心愿景**：通过 Hybrid P2P 与无缝的微支付拦截，建立 Agent to Agent (A2A) 的算力二级市场
