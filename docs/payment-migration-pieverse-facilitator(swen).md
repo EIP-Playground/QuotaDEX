@@ -4,6 +4,26 @@
 > 目的：将当前 QuotaDEX 的支付主路径从自定义 Escrow `deposit/receipt/release/refund` 迁移到更贴近 Kite 官方推荐的 `x402 + Pieverse Facilitator` 模式。
 > 适用范围：当前黑客松版本的支付主路径与集成策略，不覆盖长期生产级清结算体系。
 
+## 0. 当前迁移进度
+
+截至当前仓库进度，下面这些迁移项已经完成：
+
+1. 已新增 `lib/chain/facilitator.ts`
+2. `quote` 已新增 x402 风格的 `accepts`
+3. facilitator 专用环境变量已加入：
+   - `PIEVERSE_FACILITATOR_BASE_URL`
+   - `KITE_PAYMENT_ASSET_ADDRESS`
+   - `GATEWAY_MERCHANT_WALLET`
+4. `verify` 已支持 `X-PAYMENT -> facilitator verify -> facilitator settle`
+5. `buyer-demo` 已支持 facilitator 模式：
+   - `BUYER_PAYMENT_MODE=facilitator`
+   - `BUYER_X_PAYMENT=<real X-PAYMENT>`
+
+当前还未完成的是：
+
+1. 用一份真实 `X-PAYMENT` 跑通 facilitator E2E
+2. 在 facilitator 路线完成验收后，收缩旧 mock / Escrow 主路径
+
 ## 1. 为什么现在要迁移
 
 ### 1.1 当前背景

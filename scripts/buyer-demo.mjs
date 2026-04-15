@@ -17,6 +17,7 @@ const DEFAULT_PROMPT = "hello from buyer demo";
 const DEFAULT_RESULT_TIMEOUT_MS = 30_000;
 const DEFAULT_PYUSD_DECIMALS = 6;
 const POLL_INTERVAL_MS = 1_000;
+const SUPPORTED_PAYMENT_MODES = new Set(["mock", "chain", "facilitator"]);
 
 const erc20ApproveAbi = [
   {
@@ -52,9 +53,34 @@ function getBuyerConfig() {
     process.env.BUYER_RESULT_TIMEOUT_MS ?? `${DEFAULT_RESULT_TIMEOUT_MS}`,
     10
   );
+  const requestedPaymentMode = process.env.BUYER_PAYMENT_MODE?.trim().toLowerCase();
   const buyerPrivateKey = process.env.BUYER_PRIVATE_KEY?.trim();
 
-  if (buyerPrivateKey) {
+  if (requestedPaymentMode && !SUPPORTED_PAYMENT_MODES.has(requestedPaymentMode)) {
+    throw new Error(
+      `BUYER_PAYMENT_MODE must be one of: ${Array.from(SUPPORTED_PAYMENT_MODES).join(", ")}.`
+    );
+  }
+
+  if (requestedPaymentMode === "facilitator") {
+    return {
+      gatewayBaseUrl,
+      supabaseUrl,
+      supabaseAnonKey,
+      buyerId: process.env.BUYER_ID?.trim() || "buyer-demo",
+      capability,
+      prompt,
+      resultTimeoutMs,
+      paymentMode: "facilitator",
+      xPayment: requireEnv("BUYER_X_PAYMENT")
+    };
+  }
+
+  if (requestedPaymentMode === "chain" || (!requestedPaymentMode && buyerPrivateKey)) {
+    if (!buyerPrivateKey) {
+      throw new Error("BUYER_PRIVATE_KEY is required when BUYER_PAYMENT_MODE=chain.");
+    }
+
     const account = privateKeyToAccount(
       buyerPrivateKey.startsWith("0x") ? buyerPrivateKey : `0x${buyerPrivateKey}`
     );
@@ -230,15 +256,27 @@ async function verifyPayment(config, quote) {
   const paymentResult =
     config.paymentMode === "chain"
       ? await createChainPayment(config, quote)
-      : {
-          txHash: buildMockTxHash(),
-          approvalTxHash: null
-        };
+      : config.paymentMode === "facilitator"
+        ? {
+            txHash: null,
+            approvalTxHash: null,
+            xPayment: config.xPayment
+          }
+        : {
+            txHash: buildMockTxHash(),
+            approvalTxHash: null,
+            xPayment: null
+          };
   const response = await gatewayJsonRequest(
     config.gatewayBaseUrl,
     "/api/v1/jobs/verify",
     {
       method: "POST",
+      headers: paymentResult.xPayment
+        ? {
+            "x-payment": paymentResult.xPayment
+          }
+        : undefined,
       body: JSON.stringify({
         fingerprint: quote.fingerprint,
         tx_hash: paymentResult.txHash,

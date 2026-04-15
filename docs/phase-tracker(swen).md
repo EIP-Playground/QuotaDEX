@@ -6,7 +6,7 @@
 > - `docs/mvp-rules(swen).md`
 > - `docs/development-order(swen).md`
 
-当前：`Phase 8 / Step 3` `对齐 facilitator 的 quote/payment metadata`
+当前：`Phase 8 / Step 5` `用真实 X-PAYMENT 跑 facilitator E2E`
 
 最近验收：`Mock E2E passed`
 - `quote -> verify(mock) -> seller done -> buyer final result`
@@ -303,16 +303,16 @@
 
 关键词：`facilitator` `x402` `X-PAYMENT` `verify` `settle`
 
-步骤进度：`2/5 done`
+步骤进度：`4/5 done`
 
-当前步骤：`Step 3` `对齐 facilitator 的 quote/payment metadata`
+当前步骤：`Step 5` `用真实 X-PAYMENT 跑 facilitator E2E`
 
 步骤清单：
 
 - `✓` Step 1: 新增 `lib/chain/facilitator.ts`
 - `✓` Step 2: 给 `quote` 增加 x402 风格的 `accepts`
-- `○` Step 3: 对齐 facilitator 的 `asset / payTo / env`
-- `○` Step 4: `verify` 接入 facilitator `verify / settle`
+- `✓` Step 3: 对齐 facilitator 的 `asset / payTo / env`
+- `✓` Step 4: `verify` 接入 facilitator `verify / settle`
 - `○` Step 5: 跑一轮 facilitator E2E
 
 目标：
@@ -329,6 +329,7 @@
 
 - 当前主路径仍保留旧字段兼容，避免打断现有 demo
 - `Escrow` 代码保留，但不再作为比赛主支付路径继续扩展
+- `buyer-demo` 已支持 facilitator 模式，但仍需要一份真实 `X-PAYMENT` 完成最终验收
 
 ### Phase 9：SDK
 

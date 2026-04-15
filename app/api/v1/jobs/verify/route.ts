@@ -6,6 +6,12 @@ import {
   internalServerErrorResponse
 } from "@/lib/errors";
 import {
+  decodeXPaymentHeader,
+  FacilitatorRequestError,
+  settleFacilitatorPayment,
+  verifyFacilitatorPayment
+} from "@/lib/chain/facilitator";
+import {
   InvalidEscrowReceiptError,
   looksLikeOnChainTxHash,
   verifyEscrowDepositReceipt
@@ -24,7 +30,80 @@ import {
 } from "@/lib/jobs";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
+async function verifyPaymentForRequest(params: {
+  txHash: string | null;
+  xPaymentHeader: string | null;
+  quoteContext: NonNullable<Awaited<ReturnType<typeof loadQuoteContext>>>;
+  verifyRequest: ReturnType<typeof parseVerifyRequestBody>;
+  env: ReturnType<typeof getServerEnv>;
+}): Promise<{ resolvedTxHash: string | null }> {
+  if (params.xPaymentHeader) {
+    const paymentPayload = decodeXPaymentHeader(params.xPaymentHeader);
+    const verifyResponse = await verifyFacilitatorPayment({
+      paymentPayload,
+      baseUrl: params.env.PIEVERSE_FACILITATOR_BASE_URL
+    });
+
+    if (verifyResponse.valid === false) {
+      throw new FacilitatorRequestError(
+        verifyResponse.error || "Facilitator verify rejected the payment.",
+        "FACILITATOR_RESPONSE_INVALID",
+        400,
+        verifyResponse
+      );
+    }
+
+    const settleResponse = await settleFacilitatorPayment({
+      paymentPayload,
+      baseUrl: params.env.PIEVERSE_FACILITATOR_BASE_URL
+    });
+
+    if (settleResponse.success === false) {
+      throw new FacilitatorRequestError(
+        settleResponse.error || "Facilitator settle rejected the payment.",
+        "FACILITATOR_RESPONSE_INVALID",
+        400,
+        settleResponse
+      );
+    }
+
+    return {
+      resolvedTxHash:
+        typeof settleResponse.txHash === "string" && settleResponse.txHash.trim() !== ""
+          ? settleResponse.txHash.trim()
+          : null
+    };
+  }
+
+  if (!params.txHash) {
+    throw new Error("tx_hash is required when X-PAYMENT is not provided.");
+  }
+
+  if (looksLikeOnChainTxHash(params.txHash)) {
+    await verifyEscrowDepositReceipt({
+      txHash: params.txHash,
+      paymentId: params.quoteContext.payment_id,
+      buyerId: params.verifyRequest.payload.buyer_id,
+      sellerId: params.quoteContext.seller_id,
+      amount: params.quoteContext.amount,
+      rpcUrl: params.env.KITE_RPC_URL,
+      escrowAddress: params.env.ESCROW_CONTRACT_ADDRESS,
+      pyusdDecimals: Number.parseInt(params.env.PYUSD_DECIMALS, 10)
+    });
+    return {
+      resolvedTxHash: params.txHash
+    };
+  }
+
+  verifyMockTxHash(params.txHash);
+
+  return {
+    resolvedTxHash: params.txHash
+  };
+}
+
 export async function POST(request: Request) {
+  const xPaymentHeader = request.headers.get("x-payment");
   let body: unknown;
 
   try {
@@ -102,44 +181,54 @@ export async function POST(request: Request) {
     );
   }
 
-  if (looksLikeOnChainTxHash(verifyRequest.tx_hash)) {
-    try {
-      await verifyEscrowDepositReceipt({
-        txHash: verifyRequest.tx_hash,
-        paymentId: quoteContext.payment_id,
-        buyerId: verifyRequest.payload.buyer_id,
-        sellerId: quoteContext.seller_id,
-        amount: quoteContext.amount,
-        rpcUrl: env.KITE_RPC_URL,
-        escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-        pyusdDecimals: Number.parseInt(env.PYUSD_DECIMALS, 10)
-      });
-    } catch (error) {
-      if (error instanceof InvalidEscrowReceiptError) {
-        return badRequestResponse(error.message, error.code);
-      }
+  let verifiedPayment;
 
-      return internalServerErrorResponse(
-        "Failed to verify on-chain receipt.",
-        "RECEIPT_VERIFY_FAILED",
-        { reason: error instanceof Error ? error.message : "Unknown receipt verify error." }
-      );
-    }
-  } else {
-    try {
-      verifyMockTxHash(verifyRequest.tx_hash);
-    } catch (error) {
+  try {
+    verifiedPayment = await verifyPaymentForRequest({
+      txHash: verifyRequest.tx_hash,
+      xPaymentHeader,
+      quoteContext,
+      verifyRequest,
+      env
+    });
+  } catch (error) {
+    if (error instanceof FacilitatorRequestError) {
       return badRequestResponse(
-        error instanceof Error ? error.message : "Invalid mock tx hash.",
-        "INVALID_TX_HASH"
+        error.message,
+        error.code,
+        error.details && typeof error.details === "object"
+          ? { facilitator: error.details as Record<string, unknown> }
+          : undefined
       );
     }
+
+    if (error instanceof InvalidEscrowReceiptError) {
+      return badRequestResponse(error.message, error.code);
+    }
+
+    if (error instanceof Error && error.message === "tx_hash must be a valid mock transaction hash.") {
+      return badRequestResponse(error.message, "INVALID_TX_HASH");
+    }
+
+    if (error instanceof Error && error.message === "tx_hash is required when X-PAYMENT is not provided.") {
+      return badRequestResponse(error.message, "INVALID_TX_HASH");
+    }
+
+    return internalServerErrorResponse(
+      "Failed to verify payment.",
+      "PAYMENT_VERIFY_FAILED",
+      { reason: error instanceof Error ? error.message : "Unknown payment verify error." }
+    );
   }
 
   let createdJob;
 
   try {
-    createdJob = await createPaidJob(verifyRequest, quoteContext);
+    createdJob = await createPaidJob({
+      verifyRequest,
+      quoteContext,
+      txHash: verifiedPayment.resolvedTxHash
+    });
   } catch (error) {
     if (error instanceof DuplicateVerificationError) {
       return conflictResponse(

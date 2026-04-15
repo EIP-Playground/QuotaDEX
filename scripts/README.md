@@ -64,6 +64,11 @@ Optional local overrides:
 - `BUYER_CAPABILITY` default: `llama-3`
 - `BUYER_PROMPT` default: `hello from buyer demo`
 - `BUYER_RESULT_TIMEOUT_MS` default: `30000`
+- `BUYER_PAYMENT_MODE`
+  - omitted: auto-detect `chain` when `BUYER_PRIVATE_KEY` exists, otherwise `mock`
+  - `mock`: use the existing local mock payment flow
+  - `chain`: use `approve + deposit` against the custom Escrow route
+  - `facilitator`: send a real `X-PAYMENT` header to the Gateway
 
 To enable real on-chain payment mode:
 
@@ -77,3 +82,9 @@ In real payment mode:
 
 - `BUYER_ID` must match the wallet address derived from `BUYER_PRIVATE_KEY`
 - the quoted `seller_id` must already be an EVM address
+
+To enable facilitator testing mode:
+
+- set `BUYER_PAYMENT_MODE=facilitator`
+- set `BUYER_X_PAYMENT` to a real `X-PAYMENT` value produced by Kite MCP `approve_payment`
+- keep using the same `quote -> verify -> wait result` flow; the script will attach the header when calling `POST /api/v1/jobs/verify`

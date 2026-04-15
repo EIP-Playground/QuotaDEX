@@ -22,7 +22,7 @@ export type QuoteContext = {
 
 export type VerifyRequestBody = {
   fingerprint: string;
-  tx_hash: string;
+  tx_hash: string | null;
   payload: QuoteRequestBody;
 };
 
@@ -231,9 +231,19 @@ export function parseVerifyRequestBody(input: unknown): VerifyRequestBody {
     throw new Error("Request body must be a JSON object.");
   }
 
+  const txHash = input.tx_hash;
+
+  if (
+    txHash !== undefined &&
+    txHash !== null &&
+    (typeof txHash !== "string" || txHash.trim() === "")
+  ) {
+    throw new Error("tx_hash must be a non-empty string when provided.");
+  }
+
   return {
     fingerprint: readRequiredString(input, "fingerprint"),
-    tx_hash: readRequiredString(input, "tx_hash"),
+    tx_hash: typeof txHash === "string" ? txHash.trim() : null,
     payload: parseQuoteRequestBody(input.payload)
   };
 }
@@ -368,21 +378,24 @@ export function verifyMockTxHash(txHash: string): void {
 }
 
 export async function createPaidJob(
-  verifyRequest: VerifyRequestBody,
-  quoteContext: QuoteContext
+  params: {
+    verifyRequest: VerifyRequestBody;
+    quoteContext: QuoteContext;
+    txHash: string | null;
+  }
 ): Promise<CreatedPaidJob> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("jobs")
     .insert({
-      payment_id: quoteContext.payment_id,
-      buyer_id: quoteContext.buyer_id,
-      seller_id: quoteContext.seller_id,
-      tx_hash: verifyRequest.tx_hash,
+      payment_id: params.quoteContext.payment_id,
+      buyer_id: params.quoteContext.buyer_id,
+      seller_id: params.quoteContext.seller_id,
+      tx_hash: params.txHash,
       payload: {
-        buyer_id: verifyRequest.payload.buyer_id,
-        capability: verifyRequest.payload.capability,
-        prompt: verifyRequest.payload.prompt
+        buyer_id: params.verifyRequest.payload.buyer_id,
+        capability: params.verifyRequest.payload.capability,
+        prompt: params.verifyRequest.payload.prompt
       },
       status: "paid"
     })

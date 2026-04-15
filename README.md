@@ -22,8 +22,8 @@ Before writing code, read these documents in order:
 Current delivery summary:
 
 - Current phase: `Phase 8 - Payment Migration`
-- Current step: `Step 3/5` align quote metadata with facilitator route
-- Next milestone: add facilitator-backed verify flow
+- Current step: `Step 5/5` run a facilitator-backed E2E with a real `X-PAYMENT`
+- Next milestone: validate the facilitator route end to end, then move into `Phase 9 SDK`
 - Latest checkpoint: `Mock E2E passed`
   - `quote -> verify(mock) -> seller done -> buyer final result`
 
@@ -123,6 +123,8 @@ contracts/
   - loads `quote:{payment_id}` from Redis
   - verifies real Escrow deposit receipts for full transaction hashes
   - keeps mock `tx_hash` validation as a local fallback
+  - supports facilitator `X-PAYMENT` with `verify + settle`
+  - stores facilitator-settled `txHash` when available, otherwise allows `null`
   - creates a formal `paid` job
   - moves the seller from `reserved` to `busy`
 - The seller execution callbacks are implemented:
@@ -142,6 +144,7 @@ contracts/
 - A minimal buyer demo script exists:
   - `scripts/buyer-demo.mjs`
   - `quote -> mock pay or real approve+deposit -> verify -> wait result`
+  - `facilitator` mode via `BUYER_PAYMENT_MODE=facilitator` and `BUYER_X_PAYMENT`
   - Supabase Realtime result subscription
   - polling fallback through `GET /api/v1/jobs/:id`
 - A minimal escrow contract skeleton exists:
