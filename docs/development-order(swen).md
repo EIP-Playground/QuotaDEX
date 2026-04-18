@@ -349,7 +349,6 @@ Redis 只做两件事：
 2. 调整 `quote` 的 x402 风格返回
 3. 引入 facilitator 专用环境变量
 4. 在 `verify` 中接入 facilitator `verify / settle`
-5. 跑通新的 facilitator E2E
 
 ### 这一阶段的本质
 
@@ -377,7 +376,23 @@ Redis 只做两件事：
 1. 不是新增核心业务能力
 2. 而是把已经验证过的流程产品化、可复用化
 
-## 14. Phase 10：Dashboard 与稳定性补充
+## 14. Future Plan：Agent Passport / Kite MCP Live Validation
+
+### 为什么把它移出主线
+
+1. 这一步依赖外部访问条件，不是仓库代码本身的问题
+2. 当前缺少 Kite Portal invite / access，无法获取真实 `X-PAYMENT`
+3. 如果继续把它挂在当前主线，会阻塞 SDK 与后续产品化工作
+
+### 这一阶段以后再做什么
+
+1. 获取 Kite Portal access
+2. 准备可用的 MCP-capable client
+3. 跑 `get_payer_addr`
+4. 跑 `approve_payment`
+5. 用真实 `X-PAYMENT` 补做 facilitator live validation
+
+## 15. Phase 10：Dashboard 与稳定性补充
 
 ### 目标
 

@@ -21,14 +21,14 @@
 
 当前还未完成的是：
 
-1. 用一份真实 `X-PAYMENT` 跑通 facilitator E2E
-2. 在 facilitator 路线完成验收后，收缩旧 mock / Escrow 主路径
+1. 在 facilitator 路线完成最终 live validation 后，收缩旧 mock / Escrow 主路径
 
-当前 blocker：
+已移入 Future Plan 的外部验证项：
 
-1. 缺少 Kite Portal 账号
-2. 缺少已接入 OAuth 的 MCP-capable client
-3. 还无法实际调用 `approve_payment` 获取真实 `X-PAYMENT`
+1. 获取 Kite Portal access
+2. 准备可用的 MCP-capable client
+3. 跑通 `approve_payment` 并拿到真实 `X-PAYMENT`
+4. 用真实 `X-PAYMENT` 补做 facilitator E2E
 
 ## 1. 为什么现在要迁移
 

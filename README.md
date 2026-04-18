@@ -4,7 +4,7 @@ QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP use
 
 AgentBazaar is the planned parent Agent Marketplace for the broader vision. Its positioning is an Agent Marketplace that showcases the Accountable Agent Commerce Layer. QuotaDEX is the first vertical service planned inside that future AgentBazaar marketplace.
 
-当前仓库已经完成 `Phase 7`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、Escrow 合约骨架、真实 `deposit`、receipt 校验、`release`、`refund` 都已落地。当前黑客松主线已切换到 `Phase 8`：支付迁移到 Pieverse Facilitator，SDK 提炼顺延到迁移完成之后。
+当前仓库已经完成 `Phase 8`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、自定义 Escrow 链上原型、Facilitator 支付迁移代码路径都已落地。当前主线已进入 `Phase 9`：开始提炼 SDK；`Agent Passport / Kite MCP / real X-PAYMENT` 验收被放入 Future Plan，等待外部访问条件具备后再执行。
 
 ## Read First
 
@@ -21,10 +21,10 @@ Before writing code, read these documents in order:
 
 Current delivery summary:
 
-- Current phase: `Phase 8 - Payment Migration`
-- Current step: `Step 5/5` run a facilitator-backed E2E with a real `X-PAYMENT`
-- Next milestone: validate the facilitator route end to end, then move into `Phase 9 SDK`
-- Current blocker: real facilitator E2E is waiting on external Kite Portal + MCP client setup to obtain a real `X-PAYMENT`
+- Current phase: `Phase 9 - SDK`
+- Current step: `Step 1/2` extract `buyer-sdk`
+- Next milestone: package the seller flow into `seller-sdk`
+- Future plan: complete `Agent Passport / Kite MCP / real X-PAYMENT` validation for the facilitator route when external access is available
 - Latest checkpoint: `Mock E2E passed`
   - `quote -> verify(mock) -> seller done -> buyer final result`
 
@@ -46,6 +46,8 @@ Current delivery summary:
   - `quote`, mock pay, `verify`, Realtime wait, polling fallback
 - `Phase 7 - custom Escrow real-chain prototype`
   - Escrow contract, real `deposit`, receipt validation, `release`, `refund`
+- `Phase 8 - facilitator payment migration (code path complete)`
+  - facilitator helper, x402-style `accepts`, facilitator env config, `verify + settle`, `buyer-demo` facilitator mode
 - `Mock E2E checkpoint`
   - local Gateway + Supabase + Redis + seller worker + buyer demo passed end to end
 
