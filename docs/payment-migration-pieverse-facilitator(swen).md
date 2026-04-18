@@ -1,12 +1,12 @@
-# QuotaDEX 支付迁移方案：切换到 Pieverse Facilitator（swen）
+# QuotaDEX Future Integration Plan：Pieverse Facilitator（swen）
 
 > 日期：2026-04-10
-> 目的：将当前 QuotaDEX 的支付主路径从自定义 Escrow `deposit/receipt/release/refund` 迁移到更贴近 Kite 官方推荐的 `x402 + Pieverse Facilitator` 模式。
-> 适用范围：当前黑客松版本的支付主路径与集成策略，不覆盖长期生产级清结算体系。
+> 目的：记录未来如何把当前 QuotaDEX 从自定义 Escrow 主路线扩展到更贴近 Kite 官方推荐的 `x402 + Pieverse Facilitator` 模式。
+> 适用范围：Future Plan，不属于当前 demo 主线。
 
-## 0. 当前迁移进度
+## 0. 当前状态
 
-截至当前仓库进度，下面这些迁移项已经完成：
+截至当前仓库进度，下面这些 Facilitator 接入准备项已经完成：
 
 1. 已新增 `lib/chain/facilitator.ts`
 2. `quote` 已新增 x402 风格的 `accepts`
@@ -21,7 +21,8 @@
 
 当前还未完成的是：
 
-1. 在 facilitator 路线完成最终 live validation 后，收缩旧 mock / Escrow 主路径
+1. 获取真实 `X-PAYMENT` 并做 live validation
+2. 仅在验证通过后，再决定是否收缩旧 mock / Escrow 路径
 
 已移入 Future Plan 的外部验证项：
 
@@ -30,7 +31,7 @@
 3. 跑通 `approve_payment` 并拿到真实 `X-PAYMENT`
 4. 用真实 `X-PAYMENT` 补做 facilitator E2E
 
-## 1. 为什么现在要迁移
+## 1. 为什么未来仍然要集成
 
 ### 1.1 当前背景
 
@@ -51,7 +52,7 @@
 3. Gateway 侧 receipt 校验
 4. Gateway 调 `release/refund`
 
-### 1.2 为什么要改成 Pieverse Facilitator
+### 1.2 为什么未来仍然要补 Pieverse Facilitator
 
 Kite 当前官方 `Service Provider Guide` 推荐的服务方支付标准是：
 
@@ -123,14 +124,14 @@ Kite 官方文档写得很明确：
 
 这意味着：
 
-1. 当前 `Escrow` 不再适合作为黑客松主路径
-2. 当前 `release/refund` 不能继续作为主结算机制
+1. 当前 `Escrow` 与 facilitator 在资金路径上是两种不同模型
+2. 因此 facilitator 更适合作为未来的独立集成路线，而不是继续混进当前 demo 主路线
 
 ## 3. 推荐的迁移结论
 
-### 3.1 黑客松主路径
+### 3.1 Future integration path
 
-黑客松主路径应切到：
+Future Plan 里的支付扩展路线应切到：
 
 1. `x402 + Pieverse Facilitator`
 2. `payTo = Gateway merchant wallet`
@@ -138,18 +139,18 @@ Kite 官方文档写得很明确：
 
 ### 3.2 当前 Escrow 的处理方式
 
-当前 `QuotaDEXEscrow` 不建议直接删除。
+当前 `QuotaDEXEscrow` 不建议直接删除，且继续保留为当前 demo 主路线。
 
 建议改成：
 
 1. 保留代码
-2. 不再作为当前比赛版本的主支付路径
-3. 作为未来“自定义托管结算模式”的实验基础
+2. 继续作为当前比赛版本的主支付路径
+3. Facilitator 成熟后，再决定是否降级为长期实验资产
 
 一句话：
 
-1. **比赛主路径：Facilitator**
-2. **长期实验资产：Escrow**
+1. **当前 demo 主路径：Escrow**
+2. **未来扩展支付路线：Facilitator**
 
 ## 4. 支付模型应如何调整
 
@@ -214,24 +215,24 @@ Kite 官方文档写得很明确：
 
 推荐采用：
 
-**方案 A：Hackathon Facilitator Mode**
+**方案 A：Current Demo Escrow + Future Facilitator**
 
 定义：
 
-1. 主支付路径完全使用 Pieverse Facilitator
-2. Escrow 代码保留但不走主链
-3. `complete/fail` 先不做强制二次链上转账
-4. 先保证“官方支付接入标准”成立
+1. 当前 demo 主支付路径继续使用 Escrow
+2. Pieverse Facilitator 作为 Future Plan 保留并逐步完善
+3. `complete/fail` 当前继续围绕 Escrow 主路线运行
+4. 等访问条件具备后，再补官方支付验收
 
 不推荐当前阶段采用：
 
-**方案 B：继续以 Escrow 为主，再硬贴 facilitator**
+**方案 B：在 demo 前强行把 Facilitator 提升为主路径**
 
 原因：
 
-1. 抽象会打架
-2. 资金路径会不清楚
-3. 答辩时也更难讲清楚
+1. 真实 `X-PAYMENT` 还不可得
+2. 会把当前 demo 主线切到一个未完成 live validation 的方向
+3. 讲解时会同时混入太多未验收条件
 
 ## 6. 代码层需要改什么
 
@@ -406,24 +407,23 @@ Kite 官方文档写得很明确：
 
 这次迁移意味着：
 
-1. 当前文档里的 `Phase 8 SDK` 不应立刻继续推进
-2. 应先插入一个新的优先事项：
-   - `Payment Migration to Pieverse Facilitator`
+1. Facilitator 不再阻塞当前 demo 主线
+2. 当前阶段最优先的是 `Demo Hardening`
 
 原因：
 
-1. 支付协议变了
-2. 如果现在先提炼 `buyer-sdk`，很容易把旧支付路径封进 SDK
-3. 那样会造成二次返工
+1. 当前主支付路线已经回到 Escrow
+2. live validation 依赖外部访问条件
+3. demo 前继续扩协议会稀释主循环表达
 
 结论：
 
-1. **先迁移支付**
-2. **再提炼 buyer-sdk**
-3. **再提炼 seller-sdk**
+1. **先完成 Escrow 主路线 demo 打磨**
+2. **再决定是否做 SDK**
+3. **最后再回到 Facilitator Future Plan**
 
 ## 10. 一句话总结
 
-如果目标是参加 Pieverse / Kite 方向的黑客松，并为未来 Skill Store 铺路，那么当前最合理的做法不是继续加深自定义 Escrow，而是：
+如果目标是先做一个可验证、可重复演示、能快速讲清楚的 demo，那么当前最合理的做法是：
 
-**保留 Escrow 代码作为长期资产，同时把比赛主支付路径切到官方更推荐的 `x402 + Pieverse Facilitator`。**
+**继续以 Escrow 作为主支付路线，把 Facilitator 保留为 Future Integration Plan。**

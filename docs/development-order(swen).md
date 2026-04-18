@@ -47,7 +47,8 @@
 4. 所以 MVP 正确顺序是：
    - 先做网关和数据层
    - 先跑通最小闭环
-   - 再把重复逻辑提炼成 SDK
+   - 再打磨 demo 主循环
+   - 最后再决定是否提炼 SDK
 
 结论：
 
@@ -85,9 +86,8 @@
 6. Seller worker
 7. Buyer 最小调用脚本
 8. 真实链上与 Escrow 合约
-9. Payment Migration to Pieverse Facilitator
-10. SDK
-11. Dashboard 与稳定性补充
+9. Demo Hardening
+10. Future Plan（Facilitator / SDK / Dashboard）
 
 这个顺序的核心原则是：
 
@@ -335,64 +335,46 @@ Redis 只做两件事：
 2. 它证明 QuotaDEX 能走通真实链上支付闭环
 3. 但它不是当前黑客松主支付路线的最终标准答案
 
-## 12. Phase 8：Payment Migration to Pieverse Facilitator
+## 12. Phase 8：Demo Hardening
 
 ### 为什么要插入这一阶段
 
-1. 当前黑客松主线已经从自定义 Escrow 原型转向 Kite 官方更推荐的支付路线
-2. 如果现在直接提炼 SDK，很容易把旧支付路径封进 SDK，后面返工
-3. 所以在 SDK 之前，先完成 facilitator 支付迁移更合理
+1. 现在离 demo 更近的问题，不是再扩协议，而是把可演示的主循环做稳
+2. 当前真正可反复验证的主支付路线是自定义 Escrow，不是 Facilitator live validation
+3. 所以在任何产品化动作之前，先把 Escrow 主路线的 demo 闭环打磨好更合理
 
 ### 这一阶段要做什么
 
-1. 新增 facilitator helper
-2. 调整 `quote` 的 x402 风格返回
-3. 引入 facilitator 专用环境变量
-4. 在 `verify` 中接入 facilitator `verify / settle`
+1. 锁定支付叙事：`Escrow = primary route`
+2. 保持 `Mock = stable fallback`
+3. 反复跑通 Escrow 主路线
+4. 准备 explorer proof / receipt / status 展示
+5. 收紧 demo loop，确保 2 分钟内能讲清楚
 
 ### 这一阶段的本质
 
-1. 不推翻现有主链路
-2. 而是把比赛主支付路径切换到更贴近官方推荐的标准
+1. 不继续扩协议分叉
+2. 而是把当前能展示、能验证、能说服人的单循环做顺
 
-## 13. Phase 9：再做 SDK
+## 13. Future Plan：Pieverse Facilitator / Agent Passport / SDK / Dashboard
 
-### 这一步到底是在做什么
+### 为什么移入 Future Plan
 
-当网关协议和主链路已经稳定后，再把重复流程提炼成可复用库。
+1. Facilitator live validation 依赖外部访问条件
+2. SDK 与 Dashboard 都属于 demo 之后的产品化工作
+3. 当前如果继续把这些挂在主线，会稀释 demo 交付焦点
 
-### buyer-sdk 的目标
-
-1. 封装 Buyer 的整套接入流程
-2. 让外部 Buyer Agent 只需要少量调用代码
-
-### seller-sdk 的目标
-
-1. 封装 Seller 的整套接单流程
-2. 让外部 Seller Agent 更容易接入
-
-### 这一步的本质
-
-1. 不是新增核心业务能力
-2. 而是把已经验证过的流程产品化、可复用化
-
-## 14. Future Plan：Agent Passport / Kite MCP Live Validation
-
-### 为什么把它移出主线
-
-1. 这一步依赖外部访问条件，不是仓库代码本身的问题
-2. 当前缺少 Kite Portal invite / access，无法获取真实 `X-PAYMENT`
-3. 如果继续把它挂在当前主线，会阻塞 SDK 与后续产品化工作
-
-### 这一阶段以后再做什么
+### 以后再做什么
 
 1. 获取 Kite Portal access
 2. 准备可用的 MCP-capable client
 3. 跑 `get_payer_addr`
 4. 跑 `approve_payment`
 5. 用真实 `X-PAYMENT` 补做 facilitator live validation
+6. 提炼 `buyer-sdk / seller-sdk`
+7. 补 `Dashboard + Stability`
 
-## 15. Phase 10：Dashboard 与稳定性补充
+## 14. 当前最重要的里程碑
 
 ### 目标
 
@@ -406,8 +388,6 @@ Redis 只做两件事：
 4. 退款流程
 5. 重试策略
 6. 基础监控与日志完善
-
-## 15. 当前最重要的里程碑
 
 第一阶段最重要的 milestone 不是：
 
@@ -425,15 +405,15 @@ Redis 只做两件事：
 
 只要这个闭环成立，项目就从“概念设计”进入“可运行原型”。
 
-## 16. 给团队和 AI 的执行建议
+## 15. 给团队和 AI 的执行建议
 
 1. 开发前先读 `docs/mvp-rules(swen).md`
 2. 再读本文件，按阶段推进
 3. 不要跳阶段开发
-4. 不要在 facilitator 迁移完成前先做 SDK、Dashboard、复杂容错
+4. 不要在 demo loop 稳定前先做 Facilitator live validation、SDK、Dashboard、复杂容错
 5. 第一优先级永远是主链路闭环
 
-## 17. 一句话总结
+## 16. 一句话总结
 
 当前正确的开发路线是：
 
@@ -441,5 +421,5 @@ Redis 只做两件事：
 2. 再做 Seller 接单和 Buyer 调用
 3. 先用 Mock 跑通支付闭环
 4. 再接真实链上
-5. 再把比赛主支付路径迁移到 Pieverse Facilitator
-6. 最后再把流程封装成 SDK，并补 Dashboard 和稳定性
+5. 以 Escrow 作为当前主支付路线完成 demo 打磨
+6. 最后再决定是否展开 Facilitator、SDK 和 Dashboard

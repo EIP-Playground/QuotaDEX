@@ -35,7 +35,7 @@ const docs = [
   },
   {
     title: "Payment Migration",
-    description: "Plan for moving the hackathon payment path from custom Escrow to Pieverse Facilitator.",
+    description: "Future integration plan for Pieverse Facilitator after the current Escrow-led demo loop.",
     path: "docs/payment-migration-pieverse-facilitator(swen).md"
   }
 ];
@@ -59,8 +59,9 @@ export default function HomePage() {
           <ul>
             <li>Set up the Next.js gateway application.</li>
             <li>Define shared env, Redis, Supabase, and fingerprint helpers.</li>
-            <li>Run the QuotaDEX buyer and seller happy path end to end.</li>
-            <li>Next up: extract buyer-sdk, then seller-sdk.</li>
+            <li>Keep Custom Escrow as the current primary payment route.</li>
+            <li>Use Mock payment only as the stable fallback demo path.</li>
+            <li>Next up: harden the demo loop, receipt view, and explorer proof.</li>
           </ul>
         </article>
 
