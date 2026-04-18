@@ -42,6 +42,31 @@ function requireEnv(name) {
   return value.trim();
 }
 
+function formatGatewayFailure(response, fallbackMessage) {
+  const detailLines = [];
+  const payload = response?.payload;
+
+  if (typeof payload?.error === "string" && payload.error.trim() !== "") {
+    detailLines.push(`error=${payload.error}`);
+  }
+
+  if (typeof payload?.code === "string" && payload.code.trim() !== "") {
+    detailLines.push(`code=${payload.code}`);
+  }
+
+  if (payload?.details && typeof payload.details === "object") {
+    try {
+      detailLines.push(`details=${JSON.stringify(payload.details)}`);
+    } catch {
+      detailLines.push("details=[unserializable]");
+    }
+  }
+
+  return detailLines.length > 0
+    ? `${fallbackMessage} ${detailLines.join(" | ")}`
+    : fallbackMessage;
+}
+
 function getBuyerConfig() {
   const gatewayBaseUrl =
     process.env.GATEWAY_BASE_URL?.trim() || DEFAULT_GATEWAY_BASE_URL;
@@ -172,6 +197,15 @@ async function requestQuote(config) {
     );
   }
 
+  console.log("[buyer] quote accepts summary", {
+    mode: config.paymentMode,
+    accepts_count: Array.isArray(response.payload.accepts)
+      ? response.payload.accepts.length
+      : 0,
+    facilitator_pay_to: response.payload.accepts?.[0]?.payTo ?? null,
+    facilitator_asset: response.payload.accepts?.[0]?.asset ?? null
+  });
+
   return response.payload;
 }
 
@@ -290,10 +324,7 @@ async function verifyPayment(config, quote) {
   );
 
   if (!response.ok || !response.payload) {
-    throw new Error(
-      response.payload?.error ??
-        `Verify failed with status ${response.status}.`
-    );
+    throw new Error(formatGatewayFailure(response, `Verify failed with status ${response.status}.`));
   }
 
   return {
@@ -415,6 +446,14 @@ async function waitForJobResult(config, jobId) {
 
 async function main() {
   const config = getBuyerConfig();
+
+  console.log("[buyer] starting run", {
+    mode: config.paymentMode,
+    buyer_id: config.buyerId,
+    capability: config.capability,
+    facilitator_x_payment_supplied:
+      config.paymentMode === "facilitator" ? Boolean(config.xPayment) : false
+  });
 
   const quote = await requestQuote(config);
   console.log("[buyer] quote received", quote);

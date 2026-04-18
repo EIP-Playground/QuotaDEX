@@ -24,6 +24,7 @@ Current delivery summary:
 - Current phase: `Phase 8 - Payment Migration`
 - Current step: `Step 5/5` run a facilitator-backed E2E with a real `X-PAYMENT`
 - Next milestone: validate the facilitator route end to end, then move into `Phase 9 SDK`
+- Current blocker: real facilitator E2E is waiting on external Kite Portal + MCP client setup to obtain a real `X-PAYMENT`
 - Latest checkpoint: `Mock E2E passed`
   - `quote -> verify(mock) -> seller done -> buyer final result`
 

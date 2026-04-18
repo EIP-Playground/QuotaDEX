@@ -24,6 +24,12 @@
 1. 用一份真实 `X-PAYMENT` 跑通 facilitator E2E
 2. 在 facilitator 路线完成验收后，收缩旧 mock / Escrow 主路径
 
+当前 blocker：
+
+1. 缺少 Kite Portal 账号
+2. 缺少已接入 OAuth 的 MCP-capable client
+3. 还无法实际调用 `approve_payment` 获取真实 `X-PAYMENT`
+
 ## 1. 为什么现在要迁移
 
 ### 1.1 当前背景

@@ -7,6 +7,7 @@
 > - `docs/development-order(swen).md`
 
 当前：`Phase 8 / Step 5` `用真实 X-PAYMENT 跑 facilitator E2E`
+当前阻塞：`缺少 Kite Portal 账号和可用的 MCP 客户端接入，暂时无法获取真实 X-PAYMENT`
 
 最近验收：`Mock E2E passed`
 - `quote -> verify(mock) -> seller done -> buyer final result`
@@ -330,6 +331,10 @@
 - 当前主路径仍保留旧字段兼容，避免打断现有 demo
 - `Escrow` 代码保留，但不再作为比赛主支付路径继续扩展
 - `buyer-demo` 已支持 facilitator 模式，但仍需要一份真实 `X-PAYMENT` 完成最终验收
+- 当前 blocker 不是仓库代码，而是外部前置条件：
+  1. Kite Portal 账号
+  2. 已完成 OAuth 的 MCP-capable client
+  3. 可调用 `approve_payment` 并返回真实 `X-PAYMENT`
 
 ### Phase 9：SDK
 

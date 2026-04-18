@@ -30,6 +30,27 @@ import {
 } from "@/lib/jobs";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
+function summarizeFacilitatorPayload(xPaymentHeader: string) {
+  try {
+    const payload = decodeXPaymentHeader(xPaymentHeader);
+
+    return {
+      authorizationKeys: Object.keys(payload.authorization ?? {}),
+      hasSignature: typeof payload.signature === "string" && payload.signature.length > 0,
+      network:
+        typeof payload.network === "string" && payload.network.trim() !== ""
+          ? payload.network.trim()
+          : null
+    };
+  } catch {
+    return {
+      authorizationKeys: [],
+      hasSignature: false,
+      network: null
+    };
+  }
+}
+
 async function verifyPaymentForRequest(params: {
   txHash: string | null;
   xPaymentHeader: string | null;
@@ -38,10 +59,24 @@ async function verifyPaymentForRequest(params: {
   env: ReturnType<typeof getServerEnv>;
 }): Promise<{ resolvedTxHash: string | null }> {
   if (params.xPaymentHeader) {
+    console.info("Verify payment route selected", {
+      mode: "facilitator",
+      paymentId: params.quoteContext.payment_id,
+      sellerId: params.quoteContext.seller_id,
+      buyerId: params.verifyRequest.payload.buyer_id,
+      xPayment: summarizeFacilitatorPayload(params.xPaymentHeader)
+    });
+
     const paymentPayload = decodeXPaymentHeader(params.xPaymentHeader);
     const verifyResponse = await verifyFacilitatorPayment({
       paymentPayload,
       baseUrl: params.env.PIEVERSE_FACILITATOR_BASE_URL
+    });
+
+    console.info("Facilitator verify completed", {
+      paymentId: params.quoteContext.payment_id,
+      valid: verifyResponse.valid ?? null,
+      responseKeys: Object.keys(verifyResponse)
     });
 
     if (verifyResponse.valid === false) {
@@ -56,6 +91,16 @@ async function verifyPaymentForRequest(params: {
     const settleResponse = await settleFacilitatorPayment({
       paymentPayload,
       baseUrl: params.env.PIEVERSE_FACILITATOR_BASE_URL
+    });
+
+    console.info("Facilitator settle completed", {
+      paymentId: params.quoteContext.payment_id,
+      success: settleResponse.success ?? null,
+      txHash:
+        typeof settleResponse.txHash === "string" && settleResponse.txHash.trim() !== ""
+          ? settleResponse.txHash.trim()
+          : null,
+      responseKeys: Object.keys(settleResponse)
     });
 
     if (settleResponse.success === false) {
@@ -80,6 +125,14 @@ async function verifyPaymentForRequest(params: {
   }
 
   if (looksLikeOnChainTxHash(params.txHash)) {
+    console.info("Verify payment route selected", {
+      mode: "escrow-chain",
+      paymentId: params.quoteContext.payment_id,
+      sellerId: params.quoteContext.seller_id,
+      buyerId: params.verifyRequest.payload.buyer_id,
+      txHash: params.txHash
+    });
+
     await verifyEscrowDepositReceipt({
       txHash: params.txHash,
       paymentId: params.quoteContext.payment_id,
@@ -94,6 +147,14 @@ async function verifyPaymentForRequest(params: {
       resolvedTxHash: params.txHash
     };
   }
+
+  console.info("Verify payment route selected", {
+    mode: "mock",
+    paymentId: params.quoteContext.payment_id,
+    sellerId: params.quoteContext.seller_id,
+    buyerId: params.verifyRequest.payload.buyer_id,
+    txHash: params.txHash
+  });
 
   verifyMockTxHash(params.txHash);
 
@@ -193,6 +254,13 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof FacilitatorRequestError) {
+      console.warn("Facilitator payment verification failed", {
+        paymentId: quoteContext.payment_id,
+        code: error.code,
+        status: error.status ?? null,
+        details: error.details ?? null
+      });
+
       return badRequestResponse(
         error.message,
         error.code,
@@ -227,6 +295,11 @@ export async function POST(request: Request) {
     createdJob = await createPaidJob({
       verifyRequest,
       quoteContext,
+      txHash: verifiedPayment.resolvedTxHash
+    });
+    console.info("Verify created paid job", {
+      paymentId: quoteContext.payment_id,
+      jobId: createdJob.id,
       txHash: verifiedPayment.resolvedTxHash
     });
   } catch (error) {
