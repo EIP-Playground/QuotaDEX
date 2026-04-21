@@ -8,15 +8,27 @@ importers:
 
   .:
     dependencies:
+      '@gsap/react':
+        specifier: ^2.1.2
+        version: 2.1.2(gsap@3.15.0)(react@19.2.5)
       '@supabase/supabase-js':
         specifier: ^2.57.4
         version: 2.103.3
       '@upstash/redis':
         specifier: ^1.3.5
         version: 1.37.0
+      gsap:
+        specifier: ^3.15.0
+        version: 3.15.0
+      lenis:
+        specifier: ^1.3.23
+        version: 1.3.23(react@19.2.5)
       next:
         specifier: ^15.5.2
         version: 15.5.15(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      ogl:
+        specifier: ^1.0.11
+        version: 1.0.11
       react:
         specifier: ^19.1.1
         version: 19.2.5
@@ -264,6 +276,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@gsap/react@2.1.2':
+    resolution: {integrity: sha512-JqliybO1837UcgH2hVOM4VO+38APk3ECNrsuSM4MuXp+rbf+/2IG2K1YJiqfTcXQHH7XlA0m3ykniFYstfq0Iw==}
+    peerDependencies:
+      gsap: ^3.12.5
+      react: '>=17'
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -878,6 +896,9 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  gsap@3.15.0:
+    resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
+
   html-encoding-sniffer@4.0.0:
     resolution: {integrity: sha512-Y22oTqIU4uuPgEemfz7NDJz6OeKf12Lsu+QC+s3BVpda64lTiMYCyGwg5ki4vFxkMwQdeZDl2adZoqUgdFuTgQ==}
     engines: {node: '>=18'}
@@ -923,6 +944,20 @@ packages:
       canvas: ^3.0.0
     peerDependenciesMeta:
       canvas:
+        optional: true
+
+  lenis@1.3.23:
+    resolution: {integrity: sha512-YxYq3TJqj9sJNv0V9SkyQHejt14xwyIwgDaaMK89Uf9SxQfIszu+gTQSSphh6BWlLTNVKvvXAGkg+Zf+oFIevg==}
+    peerDependencies:
+      '@nuxt/kit': '>=3.0.0'
+      react: '>=17.0.0'
+      vue: '>=3.0.0'
+    peerDependenciesMeta:
+      '@nuxt/kit':
+        optional: true
+      react:
+        optional: true
+      vue:
         optional: true
 
   loupe@3.2.1:
@@ -973,6 +1008,9 @@ packages:
 
   nwsapi@2.2.23:
     resolution: {integrity: sha512-7wfH4sLbt4M0gCDzGE6vzQBo0bfTKjU7Sfpqy/7gs1qBfYz2vEJH6vXcBKpO3+6Yu1telwd0t9HpyOoLEQQbIQ==}
+
+  ogl@1.0.11:
+    resolution: {integrity: sha512-kUpC154AFfxi16pmZUK4jk3J+8zxwTWGPo03EoYA8QPbzikHoaC82n6pNTbd+oEaJonaE8aPWBlX7ad9zrqLsA==}
 
   ox@0.14.17:
     resolution: {integrity: sha512-jOzNb2Wlfzsr8z/GoCtd1bf6OSRuWuysvbhnHGD+7fV1WRbcBR6B0RYoe3xWnUedF7zp4l5APmS7CzAhUok/lA==}
@@ -1414,6 +1452,11 @@ snapshots:
 
   '@esbuild/win32-x64@0.27.7':
     optional: true
+
+  '@gsap/react@2.1.2(gsap@3.15.0)(react@19.2.5)':
+    dependencies:
+      gsap: 3.15.0
+      react: 19.2.5
 
   '@img/colour@1.1.0':
     optional: true
@@ -1896,6 +1939,8 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  gsap@3.15.0: {}
+
   html-encoding-sniffer@4.0.0:
     dependencies:
       whatwg-encoding: 3.1.1
@@ -1959,6 +2004,10 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  lenis@1.3.23(react@19.2.5):
+    optionalDependencies:
+      react: 19.2.5
+
   loupe@3.2.1: {}
 
   lru-cache@10.4.3: {}
@@ -1999,6 +2048,8 @@ snapshots:
       - babel-plugin-macros
 
   nwsapi@2.2.23: {}
+
+  ogl@1.0.11: {}
 
   ox@0.14.17(typescript@5.9.3):
     dependencies:

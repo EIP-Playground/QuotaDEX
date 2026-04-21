@@ -1,29 +1,88 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import HomePage from "@/app/page";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const makeCtxStub = () =>
+  ({
+    clearRect: vi.fn(),
+    scale: vi.fn(),
+    beginPath: vi.fn(),
+    arc: vi.fn(),
+    fill: vi.fn(),
+    fillRect: vi.fn(),
+    strokeRect: vi.fn(),
+    stroke: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    translate: vi.fn(),
+    fillText: vi.fn(),
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    globalAlpha: 1,
+    font: "",
+    textAlign: "",
+    textBaseline: ""
+  }) as unknown as CanvasRenderingContext2D;
+
+async function renderHomePage() {
+  const { default: HomePage } = await import("@/app/page");
+  return render(<HomePage />);
+}
 
 describe("HomePage", () => {
-  it("renders the Kite-style landing page with the core QuotaDEX brand sections", () => {
-    render(<HomePage />);
+  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+
+    HTMLCanvasElement.prototype.getContext = vi.fn(
+      () => makeCtxStub()
+    ) as unknown as HTMLCanvasElement["getContext"];
+  });
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+  });
+
+  it("renders the landing hero, features, and timeline", async () => {
+    await renderHomePage();
 
     expect(
       screen.getByRole("heading", {
         name: /the first decentralized ai compute marketplace/i
       })
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /open dashboard/i })).toHaveAttribute(
+
+    expect(screen.getByRole("link", { name: /become a seller/i })).toHaveAttribute(
       "href",
-      "/dashboard"
+      "/marketplace"
     );
-    expect(screen.getByText(/custom escrow/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /start selling compute/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /find a compute/i })).toHaveAttribute(
       "href",
-      "/dashboard"
+      "/marketplace"
     );
+
     expect(
-      screen.getByRole("heading", { name: /quotadex \[marketplace\]/i })
+      screen.getByRole("heading", { name: /idle compute to revenue/i })
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /quotadex \[escrow\]/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /quotadex \[monitor\]/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /global a2a network/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /instant micro-payments/i })
+    ).toBeInTheDocument();
+
+    expect(screen.getByRole("heading", { name: /quote \[ & verify \]/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /escrow \[ on kite \]/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /agent \[ network \]/i })
+    ).toBeInTheDocument();
+
+    expect(screen.getByText(/idle ai compute finally has a market/i)).toBeInTheDocument();
+    expect(screen.getByText(/© 2026 quotadex/i)).toBeInTheDocument();
   });
 });

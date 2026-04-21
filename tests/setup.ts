@@ -1,5 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 
+if (typeof globalThis.IntersectionObserver === "undefined") {
+  globalThis.IntersectionObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof IntersectionObserver;
+}
+
 function setDefaultEnv(name: string, value: string) {
   if (!process.env[name]) {
     process.env[name] = value;
