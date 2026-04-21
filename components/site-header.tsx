@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
 type SiteHeaderProps = {
-  current: "landing" | "marketplace";
+  current: "landing" | "marketplace" | "demo";
 };
 
 const LINKS = [

@@ -47,7 +47,7 @@ describe("MarketplacePage", () => {
     expect(
       screen.getByRole("heading", { name: /global compute monitor/i })
     ).toBeInTheDocument();
-    expect(screen.getByText(/live · kite mainnet/i)).toBeInTheDocument();
+    expect(screen.getByText(/demo · simulated/i)).toBeInTheDocument();
     expect(screen.getByText(/active agents/i)).toBeInTheDocument();
     expect(screen.getByText(/24h volume/i)).toBeInTheDocument();
     expect(

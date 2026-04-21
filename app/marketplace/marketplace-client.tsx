@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { DotCanvas } from "@/components/landing/dot-canvas";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -21,6 +22,9 @@ type Txn = {
   amt: string;
   cap: string;
 };
+
+type MarketRow = { sellerId: string; capability: string; pricePerTask: string; status: string };
+type EventItem = { id: string; type: string; title: string; message: string; timestamp: string; jobId: string | null; tone: string };
 
 const CAPS = ["GPT-4-Turbo", "Llama-3 8B", "Mixtral 8x7B", "Claude Haiku", "Gemini Pro", "Llama-3 70B"];
 const AGENTS = ["Agent_X", "Agent_Y", "Agent_Z", "Agent_A7", "Agent_K2", "Agent_M9"];
@@ -131,7 +135,25 @@ function DemandChart() {
   );
 }
 
+function ModeSwitch({ mode, onChange }: { mode: "demo" | "live"; onChange: (m: "demo" | "live") => void }) {
+  return (
+    <div className="modeSwitch">
+      {(["demo", "live"] as const).map((m) => (
+        <button
+          key={m}
+          className={`modeSwitchBtn${mode === m ? " active" : ""}`}
+          onClick={() => onChange(m)}
+        >
+          {m === "demo" ? "Demo" : "Live"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function MarketplaceClient() {
+  const [mode, setMode] = useState<"demo" | "live">("demo");
+
   const [orderBook, setOrderBook] = useState<Seller[]>(() =>
     Array.from({ length: 9 }, (_, i) => makeSeller(i))
   );
@@ -153,7 +175,10 @@ export function MarketplaceClient() {
       }))
   );
 
+  // Demo mode: animated mock data
   useEffect(() => {
+    if (mode !== "demo") return;
+
     const feedTimer = window.setInterval(() => {
       setTxns((prev) => [makeTxn(0, Date.now()), ...prev].slice(0, 8));
     }, 2500);
@@ -183,7 +208,74 @@ export function MarketplaceClient() {
       window.clearInterval(feedTimer);
       window.clearInterval(statsTimer);
     };
-  }, []);
+  }, [mode]);
+
+  // Live mode: real API polling
+  useEffect(() => {
+    if (mode !== "live") return;
+
+    async function fetchAll() {
+      try {
+        const [summaryRes, marketRes, eventsRes] = await Promise.all([
+          fetch("/api/v1/dashboard/summary"),
+          fetch("/api/v1/dashboard/market"),
+          fetch("/api/v1/dashboard/events")
+        ]);
+        const summary = await summaryRes.json();
+        const market = await marketRes.json();
+        const events = await eventsRes.json();
+
+        const rows: MarketRow[] = market.rows ?? [];
+        const avgPrice = rows.length
+          ? rows.reduce((s, r) => s + parseFloat(r.pricePerTask), 0) / rows.length
+          : 0;
+
+        setStats({
+          agents: summary.metrics?.activeSellers ?? 0,
+          price: avgPrice,
+          vol: Math.round((summary.metrics?.completedJobs ?? 0) * avgPrice * 1000),
+          jobs: summary.metrics?.completedJobs ?? 0
+        });
+
+        setOrderBook(
+          rows.slice(0, 9).map((r) => ({
+            id: r.sellerId,
+            cap: r.capability,
+            base: parseFloat(r.pricePerTask),
+            price: parseFloat(r.pricePerTask).toFixed(4),
+            status: r.status === "idle" ? "idle" : "busy"
+          }))
+        );
+
+        const items: EventItem[] = events.items ?? [];
+        setTxns(
+          items.slice(0, 8).map((e, i) => ({
+            id: i,
+            time: new Date(e.timestamp).toLocaleTimeString("en-US", { hour12: false }),
+            from: e.jobId ? `Job_${e.jobId.slice(0, 6)}` : "System",
+            to: "QuotaDEX",
+            amt: "—",
+            cap: e.title
+          }))
+        );
+
+        const settled = items.filter((e) => e.type === "RELEASED" || e.type === "REFUNDED");
+        setSettlements(
+          settled.slice(0, 5).map((e) => ({
+            id: `0x${e.id.slice(0, 8)}…${e.id.slice(-4)}`,
+            cap: `${e.type} · ${e.jobId?.slice(0, 8) ?? "—"}`,
+            amount: "—"
+          }))
+        );
+      } catch {
+        // silently keep previous state on fetch error
+      }
+    }
+
+    fetchAll();
+    const t = window.setInterval(fetchAll, 5000);
+    return () => window.clearInterval(t);
+  }, [mode]);
 
   return (
     <>
@@ -199,7 +291,12 @@ export function MarketplaceClient() {
               </h1>
               <p>Real-time A2A marketplace activity across the Kite network</p>
             </div>
-            <div className="dashLive">LIVE · Kite Mainnet</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <ModeSwitch mode={mode} onChange={setMode} />
+              <div className="dashLive">
+                {mode === "live" ? "LIVE · Kite Mainnet" : "DEMO · Simulated"}
+              </div>
+            </div>
           </header>
 
           <section className="statRow">
@@ -213,7 +310,7 @@ export function MarketplaceClient() {
               <div className="statLabel">Avg Price / 1k tokens</div>
               <div className="statVal">
                 {stats.price.toFixed(4)}
-                <span className="small">KITE</span>
+                <span className="small">PYUSD</span>
               </div>
               <div className="statDelta down">−2.4% vs yesterday</div>
               <Sparkline data={[3, 3.2, 2.9, 2.7, 2.5, 2.6, 2.4, 2.5, 2.3, 2.2, 2.1, 2.0]} />
@@ -221,14 +318,14 @@ export function MarketplaceClient() {
             <article className="stat">
               <div className="statLabel">24h Volume</div>
               <div className="statVal">
-                {(stats.vol / 1000).toFixed(1)}k<span className="small">KITE</span>
+                {(stats.vol / 1000).toFixed(1)}k<span className="small">PYUSD</span>
               </div>
               <div className="statDelta">+18.3% vs yesterday</div>
               <Sparkline data={[50, 55, 60, 65, 62, 70, 75, 80, 85, 90, 92, 95]} />
             </article>
             <article className="stat">
               <div className="statLabel">Total Jobs Settled</div>
-              <div className="statVal">{(stats.jobs / 1e6).toFixed(2)}M+</div>
+              <div className="statVal">{stats.jobs >= 1e6 ? `${(stats.jobs / 1e6).toFixed(2)}M+` : stats.jobs.toLocaleString()}</div>
               <div className="statDelta">+4,231 today</div>
               <Sparkline data={[30, 35, 40, 42, 48, 55, 60, 68, 74, 80, 86, 92]} />
             </article>
@@ -237,32 +334,40 @@ export function MarketplaceClient() {
           <section className="dashGrid">
             <article className="panel">
               <h2>
-                Live Market · Order Book <span className="hint">updates every 1.8s</span>
+                Live Market · Order Book <span className="hint">updates every {mode === "live" ? "5s" : "1.8s"}</span>
               </h2>
               <table className="obTable">
                 <thead>
                   <tr>
                     <th>Seller</th>
                     <th>Capability</th>
-                    <th>Price (KITE)</th>
+                    <th>Price (PYUSD)</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {orderBook.map((s) => (
-                    <tr key={s.id}>
-                      <td>
-                        <span className="obSeller">
-                          0x{s.id.slice(0, 4)}…{s.id.slice(-2)}
-                        </span>
-                      </td>
-                      <td style={{ color: "var(--muted)" }}>{s.cap}</td>
-                      <td className="obPrice">{s.price}</td>
-                      <td>
-                        <span className={`obStatus ${s.status}`}>{s.status}</span>
+                  {orderBook.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: "center", color: "var(--muted)", padding: "24px 0" }}>
+                        No sellers online
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    orderBook.map((s) => (
+                      <tr key={s.id}>
+                        <td>
+                          <span className="obSeller">
+                            0x{s.id.slice(0, 4)}…{s.id.slice(-2)}
+                          </span>
+                        </td>
+                        <td style={{ color: "var(--muted)" }}>{s.cap}</td>
+                        <td className="obPrice">{s.price}</td>
+                        <td>
+                          <span className={`obStatus ${s.status}`}>{s.status}</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </article>
@@ -272,15 +377,31 @@ export function MarketplaceClient() {
                 Real-time Transactions <span className="hint">{txns.length} events</span>
               </h2>
               <div className="txnFeed">
-                {txns.map((t) => (
-                  <div key={t.id} className="txn">
-                    <div className="txnTime">[{t.time}]</div>
-                    <div className="txnMsg">
-                      <b>{t.from}</b> paid <span className="amt">{t.amt} KITE</span> to{" "}
-                      <b>{t.to}</b> for {t.cap} task
-                    </div>
+                {txns.length === 0 ? (
+                  <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>
+                    No events yet
                   </div>
-                ))}
+                ) : (
+                  txns.map((t) => (
+                    <div key={t.id} className="txn">
+                      <div className="txnTime">[{t.time}]</div>
+                      <div className="txnMsg">
+                        {mode === "live" ? (
+                          <>
+                            <b>{t.from}</b> → <b>{t.to}</b>
+                            {" · "}
+                            <span style={{ color: "var(--muted)" }}>{t.cap}</span>
+                          </>
+                        ) : (
+                          <>
+                            <b>{t.from}</b> paid <span className="amt">{t.amt} PYUSD</span> to{" "}
+                            <b>{t.to}</b> for {t.cap} task
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </article>
           </section>
@@ -324,15 +445,33 @@ export function MarketplaceClient() {
                 Top Sellers · 24h <span className="hint">by volume</span>
               </h2>
               <div className="agentList">
-                {TOP_SELLERS.map((a, i) => (
-                  <div key={a} className="agent">
-                    <div>
-                      <div className="agentId">{a}</div>
-                      <div className="agentCap">GPT-4-Turbo · Llama-3 · {3 + i} capabilities</div>
-                    </div>
-                    <div className="agentScore">{(12.4 - i * 1.8).toFixed(1)}k KITE</div>
+                {mode === "live" && orderBook.length === 0 ? (
+                  <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>
+                    No sellers registered
                   </div>
-                ))}
+                ) : mode === "live" ? (
+                  orderBook.slice(0, 5).map((s, i) => (
+                    <div key={s.id} className="agent">
+                      <div>
+                        <div className="agentId">
+                          0x{s.id.slice(0, 6)}…{s.id.slice(-4)}
+                        </div>
+                        <div className="agentCap">{s.cap} · {s.status}</div>
+                      </div>
+                      <div className="agentScore">{s.price} PYUSD</div>
+                    </div>
+                  ))
+                ) : (
+                  TOP_SELLERS.map((a, i) => (
+                    <div key={a} className="agent">
+                      <div>
+                        <div className="agentId">{a}</div>
+                        <div className="agentCap">GPT-4-Turbo · Llama-3 · {3 + i} capabilities</div>
+                      </div>
+                      <div className="agentScore">{(12.4 - i * 1.8).toFixed(1)}k PYUSD</div>
+                    </div>
+                  ))
+                )}
               </div>
             </article>
 
@@ -341,15 +480,23 @@ export function MarketplaceClient() {
                 Recent Escrow Settlements <span className="hint">on-chain proof</span>
               </h2>
               <div className="agentList">
-                {settlements.map((s, i) => (
-                  <div key={`${s.id}-${i}`} className="agent">
-                    <div>
-                      <div className="agentId">{s.id}</div>
-                      <div className="agentCap">Escrow.release · {s.cap}</div>
-                    </div>
-                    <div className="agentScore">+{s.amount}</div>
+                {mode === "live" && settlements.length === 0 ? (
+                  <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>
+                    No settlements yet
                   </div>
-                ))}
+                ) : (
+                  settlements.map((s, i) => (
+                    <div key={`${s.id}-${i}`} className="agent">
+                      <div>
+                        <div className="agentId">{s.id}</div>
+                        <div className="agentCap">
+                          {mode === "live" ? s.cap : `Escrow.release · ${s.cap}`}
+                        </div>
+                      </div>
+                      <div className="agentScore">{s.amount === "—" ? "—" : `+${s.amount}`}</div>
+                    </div>
+                  ))
+                )}
               </div>
             </article>
           </section>
@@ -357,6 +504,14 @@ export function MarketplaceClient() {
 
         <SiteFooter />
       </div>
+
+      <Link
+        href="/demo"
+        className={`tryItBtn${mode === "live" ? " hidden" : ""}`}
+        aria-hidden={mode === "live"}
+      >
+        ⚡ Try It
+      </Link>
     </>
   );
 }
