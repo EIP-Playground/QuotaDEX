@@ -97,17 +97,17 @@ a {
   cursor: pointer;
 }
 
-.siteLogoMark {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--gold), var(--gold2));
-  display: flex;
+.siteLogoImage {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+  box-shadow: 0 10px 24px rgba(31, 39, 13, 0.16);
+}
+
+.siteLogoText {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
 }
 
 .siteNavLinks {
@@ -177,12 +177,149 @@ a {
   left: 50%;
   width: 720px;
   height: 720px;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 0;
   pointer-events: none;
-  transition: opacity 0.3s;
+  perspective: 1400px;
+}
+
+.heroStage {
+  position: relative;
+  width: 640px;
+  height: 640px;
+  transform-style: preserve-3d;
+}
+
+.heroGlobeWrap {
+  position: absolute;
+  inset: 0;
+  transform: translateZ(0);
+}
+
+.heroGlobeLong {
+  transform-origin: center;
+  transform-box: view-box;
+  animation: heroGlobeSpin 30s linear infinite;
+}
+
+@keyframes heroGlobeSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroGlobeLong { animation: none; }
+}
+
+/* ───── Hero orbiting icons (3D) ───── */
+.heroOrbitLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-style: preserve-3d;
+}
+
+.heroOrbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  animation: heroOrbitSpin var(--orbit-dur, 40s) linear infinite;
+}
+
+.heroOrbit-a {
+  transform: rotateX(var(--orbit-tilt, 68deg));
+}
+
+.heroOrbit-b {
+  transform: rotateX(var(--orbit-tilt, -62deg)) rotateY(22deg);
+}
+
+.heroOrbitIcon {
+  position: absolute;
+  left: calc(var(--orbit-radius, 280px) * -0.5);
+  top: calc(var(--orbit-radius, 280px) * -0.5);
+  width: var(--orbit-radius, 280px);
+  height: var(--orbit-radius, 280px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  pointer-events: none;
+  transform-style: preserve-3d;
+}
+
+.heroOrbitIcon::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 40px;
+  position: relative;
+}
+
+.heroOrbitIcon svg {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  color: var(--gold);
+  opacity: 0.7;
+  filter: drop-shadow(0 0 8px rgba(200, 164, 53, 0.5));
+  transform: translateX(-50%) rotateX(calc(var(--orbit-tilt, 68deg) * -1));
+  animation: heroOrbitIconCounter var(--orbit-dur, 40s) linear infinite;
+}
+
+.heroOrbit-b .heroOrbitIcon svg {
+  transform: translateX(-50%) rotateY(-22deg) rotateX(calc(var(--orbit-tilt, -62deg) * -1));
+}
+
+@keyframes heroOrbitSpin {
+  from { transform: rotateX(var(--orbit-tilt, 68deg)) rotateZ(0deg); }
+  to   { transform: rotateX(var(--orbit-tilt, 68deg)) rotateZ(360deg); }
+}
+
+.heroOrbit-b {
+  animation-name: heroOrbitSpinB;
+}
+
+@keyframes heroOrbitSpinB {
+  from { transform: rotateX(var(--orbit-tilt, -62deg)) rotateY(22deg) rotateZ(0deg); }
+  to   { transform: rotateX(var(--orbit-tilt, -62deg)) rotateY(22deg) rotateZ(-360deg); }
+}
+
+@keyframes heroOrbitIconCounter {
+  from { transform: translateX(-50%) rotateX(calc(var(--orbit-tilt, 68deg) * -1)) rotateZ(0deg); }
+  to   { transform: translateX(-50%) rotateX(calc(var(--orbit-tilt, 68deg) * -1)) rotateZ(-360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroOrbit,
+  .heroOrbitIcon svg { animation: none; }
+}
+
+/* ───── Mesh orbit nodes (Agent Network) ───── */
+.meshOrbit {
+  transform-origin: 150px 130px;
+  transform-box: view-box;
+}
+
+.meshOrbitA { animation: meshOrbitSpin 9s linear infinite; }
+.meshOrbitB { animation: meshOrbitSpin 14s linear infinite reverse; }
+.meshOrbitC { animation: meshOrbitSpin 7s linear infinite reverse; }
+.meshOrbitD { animation: meshOrbitSpin 11s linear infinite; }
+
+@keyframes meshOrbitSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meshOrbit { animation: none; }
 }
 
 .heroContent {
@@ -299,13 +436,16 @@ a {
 }
 
 .fcard {
+  position: relative;
   background: var(--cream2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 28px;
+  border: none;
+  border-radius: 18px;
+  padding: 36px 28px;
+  min-height: 180px;
+  overflow: hidden;
   opacity: 0;
   transform: translateY(24px);
-  transition: opacity 0.55s ease, transform 0.55s ease, border-color 0.25s;
+  transition: opacity 0.55s ease, transform 0.55s ease, background 0.3s;
 }
 
 .fcard.fcardVisible {
@@ -315,34 +455,44 @@ a {
 
 .fcard.fcardVisible:hover {
   transform: translateY(-3px);
-  border-color: rgba(200, 164, 53, 0.4);
+  background: var(--cream3);
 }
 
-.fcardIcon {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  background: rgba(200, 164, 53, 0.15);
-  border: 1px solid rgba(200, 164, 53, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
+.fcardWatermark {
+  position: absolute;
+  right: -18px;
+  bottom: -22px;
+  width: 140px;
+  height: 140px;
   color: var(--gold);
-  font-size: 22px;
+  opacity: 0.14;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.fcard:hover .fcardWatermark {
+  opacity: 0.22;
+  transform: translate(-4px, -4px) rotate(-3deg);
+}
+
+.fcardInner {
+  position: relative;
+  z-index: 1;
 }
 
 .fcard h3 {
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.015em;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .fcard p {
   font-size: 13px;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.65;
+  max-width: 90%;
 }
 
 /* TIMELINE */
@@ -576,6 +726,189 @@ a {
   }
 }
 
+/* ABOUT PAGE */
+.aboutPage {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 140px 64px 100px;
+  position: relative;
+  z-index: 1;
+}
+
+.aboutHead {
+  text-align: center;
+  margin-bottom: 80px;
+  position: relative;
+  padding: 20px 0 30px;
+}
+
+.aboutHeadBg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(900px, 100%);
+  height: 560px;
+  transform: translate(-50%, -50%);
+  opacity: 0.35;
+  filter: blur(6px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aboutHeadInner {
+  position: relative;
+  z-index: 1;
+}
+
+.aboutEyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--olive);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+.aboutTitle {
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  margin-bottom: 24px;
+}
+
+.aboutTitle em {
+  font-family: var(--ffs);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--olive);
+}
+
+.aboutSub {
+  font-size: 16px;
+  color: var(--muted);
+  line-height: 1.75;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.aboutStack {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  margin-bottom: 80px;
+}
+
+.aboutSection {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 56px;
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
+  align-items: start;
+}
+
+.aboutSection:first-child {
+  border-top: none;
+  padding-top: 32px;
+}
+
+.aboutSectionSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  position: sticky;
+  top: 120px;
+}
+
+.aboutSectionIcon {
+  width: 44px;
+  height: 44px;
+  color: var(--gold);
+  opacity: 0.9;
+}
+
+.aboutSectionEyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--olive);
+}
+
+.aboutSectionTitle {
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  margin-bottom: 14px;
+  line-height: 1.1;
+}
+
+.aboutSectionLead {
+  font-family: var(--ffs);
+  font-style: italic;
+  font-size: 20px;
+  color: var(--olive);
+  line-height: 1.45;
+  margin-bottom: 24px;
+}
+
+.aboutSectionPara {
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.8;
+  margin-bottom: 16px;
+  opacity: 0.85;
+}
+
+.aboutSectionPara:last-child {
+  margin-bottom: 0;
+}
+
+.aboutCta {
+  border-top: 1px solid var(--border);
+  padding-top: 64px;
+  text-align: center;
+}
+
+.aboutCtaTitle {
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 28px;
+  line-height: 1.2;
+}
+
+.aboutCtaRow {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.aboutCtaRow .btnPrimary svg,
+.aboutCtaRow .btnGhost svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 960px) {
+  .aboutPage {
+    padding: 120px 24px 60px;
+  }
+
+  .aboutSection {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 36px 0;
+  }
+
+  .aboutSectionSide {
+    position: static;
+  }
+}
+
 /* FINALE */
 .landingFinale {
   text-align: center;
@@ -705,6 +1038,27 @@ a {
   font-weight: 500;
   margin-bottom: 8px;
   letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.statLabel svg {
+  width: 14px;
+  height: 14px;
+  color: var(--gold);
+}
+
+.panel h2 > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.panel h2 > span:first-child svg {
+  width: 15px;
+  height: 15px;
+  color: var(--gold);
 }
 
 .statVal {
@@ -984,6 +1338,11 @@ a {
 .tryItBtn:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 28px rgba(58, 74, 26, 0.35);
+}
+
+.tryItBtn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .tryItBtn.hidden {

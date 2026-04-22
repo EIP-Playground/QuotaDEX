@@ -1,92 +1,87 @@
 import React from "react";
 
-const CX = 150;
-const CY = 130;
-const RADIUS = 85;
-
-const AGENTS = Array.from({ length: 6 }, (_, i) => {
-  const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
-  return { x: CX + Math.cos(angle) * RADIUS, y: CY + Math.sin(angle) * RADIUS, i };
-});
-
-const STATUS_COLORS: Record<number, string> = {
-  0: "#c8a435",
-  1: "#c8a435",
-  2: "#3a4a1a",
-  3: "#3a4a1a",
-  4: "#7a7560",
-  5: "#7a7560"
-};
-
 export function MeshSvg() {
+  const RINGS = 18;
+  const cx = 150;
+  const cy = 130;
+
   return (
-    <svg viewBox="0 0 300 260" style={{ width: "100%", height: "100%" }} aria-hidden="true">
+    <svg
+      viewBox="0 0 300 260"
+      style={{ width: "100%", height: "100%" }}
+      aria-hidden="true"
+    >
       <defs>
-        <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-          <path d="M0,0 L0,7 L7,3.5 Z" fill="#c8a435" fillOpacity="0.6" />
-        </marker>
+        <radialGradient id="meshCoreGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#fff3c4" stopOpacity="0.9" />
+          <stop offset="40%" stopColor="#d4b04a" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#c8a435" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="meshNodeGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#fff3c4" stopOpacity="1" />
+          <stop offset="55%" stopColor="#d4b04a" stopOpacity="0.8" />
+          <stop offset="100%" stopColor="#c8a435" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
-      {AGENTS.map((a) => {
-        const dx = a.x - CX;
-        const dy = a.y - CY;
-        const len = Math.hypot(dx, dy);
-        const ux = dx / len;
-        const uy = dy / len;
+      {Array.from({ length: RINGS }).map((_, i) => {
+        const t = i / (RINGS - 1);
+        const rx = 30 + t * 90;
+        const ry = 18 + t * 55;
+        const tilt = -22 + Math.sin(i * 0.8) * 18;
+        const opacity = 0.35 - t * 0.22;
         return (
-          <line
-            key={`line-${a.i}`}
-            x1={CX + ux * 23}
-            y1={CY + uy * 23}
-            x2={a.x - ux * 15}
-            y2={a.y - uy * 15}
+          <ellipse
+            key={`ring-${i}`}
+            cx={cx}
+            cy={cy}
+            rx={rx}
+            ry={ry}
+            fill="none"
             stroke="#c8a435"
-            strokeWidth="1.2"
-            strokeOpacity="0.45"
-            markerEnd="url(#arrow)"
+            strokeWidth="0.55"
+            strokeOpacity={opacity}
+            transform={`rotate(${tilt} ${cx} ${cy})`}
           />
         );
       })}
 
-      <circle cx={CX} cy={CY} r={22} fill="#c8a435" fillOpacity="0.18" stroke="#c8a435" strokeWidth="1.5" />
-      <text x={CX} y={CY + 5} textAnchor="middle" fontSize="10" fontWeight="700" fill="#c8a435" fontFamily="monospace">
-        QDEX
-      </text>
-
-      {AGENTS.map((a) => (
-        <g key={`agent-${a.i}`}>
-          <circle
-            cx={a.x}
-            cy={a.y}
-            r={12}
-            fill={STATUS_COLORS[a.i]}
-            fillOpacity="0.15"
-            stroke={STATUS_COLORS[a.i]}
-            strokeWidth="1.2"
+      {Array.from({ length: RINGS }).map((_, i) => {
+        const t = i / (RINGS - 1);
+        const rx = 35 + t * 85;
+        const ry = 20 + t * 50;
+        const tilt = 28 + Math.cos(i * 0.7) * 14;
+        const opacity = 0.32 - t * 0.2;
+        return (
+          <ellipse
+            key={`ring-b-${i}`}
+            cx={cx}
+            cy={cy}
+            rx={rx}
+            ry={ry}
+            fill="none"
+            stroke="#c8a435"
+            strokeWidth="0.5"
+            strokeOpacity={opacity}
+            transform={`rotate(${tilt} ${cx} ${cy})`}
           />
-          <text
-            x={a.x}
-            y={a.y + 4}
-            textAnchor="middle"
-            fontSize="7"
-            fontWeight="600"
-            fill={STATUS_COLORS[a.i]}
-            fontFamily="monospace"
-          >
-            A{a.i + 1}
-          </text>
-          <text
-            x={a.x}
-            y={a.y + 22}
-            textAnchor="middle"
-            fontSize="8"
-            fill="#7a7560"
-            fontFamily="monospace"
-          >
-            Agent_{a.i + 1}
-          </text>
-        </g>
-      ))}
+        );
+      })}
+
+      <circle cx={cx} cy={cy} r="40" fill="url(#meshCoreGlow)" />
+
+      <g className="meshOrbit meshOrbitA">
+        <circle cx={cx + 70} cy={cy} r="2.6" fill="url(#meshNodeGlow)" />
+      </g>
+      <g className="meshOrbit meshOrbitB">
+        <circle cx={cx + 95} cy={cy} r="2.2" fill="url(#meshNodeGlow)" />
+      </g>
+      <g className="meshOrbit meshOrbitC">
+        <circle cx={cx + 55} cy={cy} r="1.8" fill="url(#meshNodeGlow)" />
+      </g>
+      <g className="meshOrbit meshOrbitD">
+        <circle cx={cx + 85} cy={cy} r="2" fill="url(#meshNodeGlow)" />
+      </g>
     </svg>
   );
 }

@@ -2,6 +2,18 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  TbActivity,
+  TbBolt,
+  TbChartBar,
+  TbChartLine,
+  TbCircleCheck,
+  TbCoin,
+  TbPlayerPlay,
+  TbShieldLock,
+  TbTrophy,
+  TbUsers
+} from "react-icons/tb";
 import { DotCanvas } from "@/components/landing/dot-canvas";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -301,13 +313,13 @@ export function MarketplaceClient() {
 
           <section className="statRow">
             <article className="stat">
-              <div className="statLabel">Active Agents</div>
+              <div className="statLabel"><TbUsers /> Active Agents</div>
               <div className="statVal">{stats.agents.toLocaleString()}</div>
               <div className="statDelta">+12 in last hour</div>
               <Sparkline data={[40, 45, 48, 50, 52, 58, 62, 64, 66, 70, 72, 75]} />
             </article>
             <article className="stat">
-              <div className="statLabel">Avg Price / 1k tokens</div>
+              <div className="statLabel"><TbCoin /> Avg Price / 1k tokens</div>
               <div className="statVal">
                 {stats.price.toFixed(4)}
                 <span className="small">PYUSD</span>
@@ -316,7 +328,7 @@ export function MarketplaceClient() {
               <Sparkline data={[3, 3.2, 2.9, 2.7, 2.5, 2.6, 2.4, 2.5, 2.3, 2.2, 2.1, 2.0]} />
             </article>
             <article className="stat">
-              <div className="statLabel">24h Volume</div>
+              <div className="statLabel"><TbChartBar /> 24h Volume</div>
               <div className="statVal">
                 {(stats.vol / 1000).toFixed(1)}k<span className="small">PYUSD</span>
               </div>
@@ -324,7 +336,7 @@ export function MarketplaceClient() {
               <Sparkline data={[50, 55, 60, 65, 62, 70, 75, 80, 85, 90, 92, 95]} />
             </article>
             <article className="stat">
-              <div className="statLabel">Total Jobs Settled</div>
+              <div className="statLabel"><TbCircleCheck /> Total Jobs Settled</div>
               <div className="statVal">{stats.jobs >= 1e6 ? `${(stats.jobs / 1e6).toFixed(2)}M+` : stats.jobs.toLocaleString()}</div>
               <div className="statDelta">+4,231 today</div>
               <Sparkline data={[30, 35, 40, 42, 48, 55, 60, 68, 74, 80, 86, 92]} />
@@ -334,7 +346,7 @@ export function MarketplaceClient() {
           <section className="dashGrid">
             <article className="panel">
               <h2>
-                Live Market · Order Book <span className="hint">updates every {mode === "live" ? "5s" : "1.8s"}</span>
+                <span><TbBolt /> Live Market · Order Book</span> <span className="hint">updates every {mode === "live" ? "5s" : "1.8s"}</span>
               </h2>
               <table className="obTable">
                 <thead>
@@ -374,7 +386,7 @@ export function MarketplaceClient() {
 
             <article className="panel">
               <h2>
-                Real-time Transactions <span className="hint">{txns.length} events</span>
+                <span><TbActivity /> Real-time Transactions</span> <span className="hint">{txns.length} events</span>
               </h2>
               <div className="txnFeed">
                 {txns.length === 0 ? (
@@ -409,7 +421,7 @@ export function MarketplaceClient() {
           <section className="dashGrid">
             <article className="panel chartPanel" style={{ gridColumn: "1 / 3" }}>
               <h2>
-                Network Demand vs Supply <span className="hint">last 24 hours</span>
+                <span><TbChartLine /> Network Demand vs Supply</span> <span className="hint">last 24 hours</span>
               </h2>
               <div className="chartLegend">
                 <span>
@@ -442,7 +454,7 @@ export function MarketplaceClient() {
           <section className="dashBottom">
             <article className="panel">
               <h2>
-                Top Sellers · 24h <span className="hint">by volume</span>
+                <span><TbTrophy /> Top Sellers · 24h</span> <span className="hint">by volume</span>
               </h2>
               <div className="agentList">
                 {mode === "live" && orderBook.length === 0 ? (
@@ -477,7 +489,7 @@ export function MarketplaceClient() {
 
             <article className="panel">
               <h2>
-                Recent Escrow Settlements <span className="hint">on-chain proof</span>
+                <span><TbShieldLock /> Recent Escrow Settlements</span> <span className="hint">on-chain proof</span>
               </h2>
               <div className="agentList">
                 {mode === "live" && settlements.length === 0 ? (
@@ -510,7 +522,7 @@ export function MarketplaceClient() {
         className={`tryItBtn${mode === "live" ? " hidden" : ""}`}
         aria-hidden={mode === "live"}
       >
-        ⚡ Try It
+        <TbPlayerPlay /> Try It
       </Link>
     </>
   );

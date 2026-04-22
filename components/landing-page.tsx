@@ -2,27 +2,43 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChipMandala } from "@/components/landing/chip-mandala";
+import {
+  TbBolt,
+  TbCoinBitcoin,
+  TbCpu,
+  TbFileText,
+  TbNetwork,
+  TbRobot,
+  TbServer2,
+  TbShieldCheck,
+  TbWallet
+} from "react-icons/tb";
 import { DotCanvas } from "@/components/landing/dot-canvas";
-import { GlobeSvg } from "@/components/landing/globe-svg";
+import { GlobeSvg, GlobeSvgSpinning } from "@/components/landing/globe-svg";
 import { MeshSvg } from "@/components/landing/mesh-svg";
 import { Terminal } from "@/components/landing/terminal";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
-const FEATURES = [
+type Feature = {
+  Icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  title: string;
+  desc: string;
+};
+
+const FEATURES: Feature[] = [
   {
-    icon: "⚙︎",
+    Icon: TbBolt,
     title: "Idle Compute to Revenue",
     desc: "Register as a seller, keep your LLM online, and earn PYUSD every time an agent buys your quota."
   },
   {
-    icon: "◈",
+    Icon: TbNetwork,
     title: "Global A2A Network",
     desc: "Agents discover, quote, and settle jobs autonomously — no middlemen, no manual API keys."
   },
   {
-    icon: "⌁",
+    Icon: TbCoinBitcoin,
     title: "Instant Micro-payments",
     desc: "x402 + custom Escrow on Kite. Payment flows in seconds, with explorer-verifiable proofs."
   }
@@ -92,29 +108,44 @@ function VisualFor({ kind }: { kind: TimelineStory["visual"] }) {
 }
 
 function Hero() {
-  const [scrollY, setScrollY] = useState(0);
-
-  useEffect(() => {
-    const onScroll = () => setScrollY(window.scrollY);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const rot = scrollY * 0.15;
-  const opacity = Math.max(0.25, 1 - scrollY / 800);
+  const orbits = [
+    { Icon: TbFileText,     radius: 280, dur: 38, start: 0,   tilt: 68,  ring: "a" },
+    { Icon: TbCpu,          radius: 280, dur: 38, start: 120, tilt: 68,  ring: "a" },
+    { Icon: TbRobot,        radius: 280, dur: 38, start: 240, tilt: 68,  ring: "a" },
+    { Icon: TbServer2,      radius: 340, dur: 55, start: 60,  tilt: -62, ring: "b" },
+    { Icon: TbShieldCheck,  radius: 340, dur: 55, start: 200, tilt: -62, ring: "b" },
+    { Icon: TbWallet,       radius: 340, dur: 55, start: 320, tilt: -62, ring: "b" }
+  ];
 
   return (
     <section className="hero">
-      <div
-        className="heroMandala"
-        aria-hidden="true"
-        style={{
-          transform: `translate(-50%, -50%) rotate(${rot}deg)`,
-          opacity
-        }}
-      >
-        <ChipMandala size={640} />
+      <div className="heroMandala" aria-hidden="true">
+        <div className="heroStage">
+          <div className="heroGlobeWrap">
+            <GlobeSvgSpinning />
+          </div>
+          <div className="heroOrbitLayer" aria-hidden="true">
+            {orbits.map((o, i) => {
+              const Icon = o.Icon;
+              return (
+                <div
+                  key={i}
+                  className={`heroOrbit heroOrbit-${o.ring}`}
+                  style={{
+                    ["--orbit-dur" as string]: `${o.dur}s`,
+                    ["--orbit-radius" as string]: `${o.radius}px`,
+                    ["--orbit-tilt" as string]: `${o.tilt}deg`,
+                    animationDelay: `${-(o.start / 360) * o.dur}s`
+                  }}
+                >
+                  <div className="heroOrbitIcon" style={{ animationDelay: `${-(o.start / 360) * o.dur}s` }}>
+                    <Icon />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <div className="heroContent">
@@ -170,22 +201,25 @@ function FeatureCards() {
 
   return (
     <section className="featureCards">
-      {FEATURES.map((f, i) => (
-        <article
-          className={`fcard${visible[i] ? " fcardVisible" : ""}`}
-          key={f.title}
-          ref={(el) => {
-            cardRefs.current[i] = el;
-          }}
-          style={{ transitionDelay: `${i * 120}ms` }}
-        >
-          <div className="fcardIcon" aria-hidden="true">
-            {f.icon}
-          </div>
-          <h3>{f.title}</h3>
-          <p>{f.desc}</p>
-        </article>
-      ))}
+      {FEATURES.map((f, i) => {
+        const Icon = f.Icon;
+        return (
+          <article
+            className={`fcard${visible[i] ? " fcardVisible" : ""}`}
+            key={f.title}
+            ref={(el) => {
+              cardRefs.current[i] = el;
+            }}
+            style={{ transitionDelay: `${i * 120}ms` }}
+          >
+            <Icon className="fcardWatermark" aria-hidden={true} />
+            <div className="fcardInner">
+              <h3>{f.title}</h3>
+              <p>{f.desc}</p>
+            </div>
+          </article>
+        );
+      })}
     </section>
   );
 }

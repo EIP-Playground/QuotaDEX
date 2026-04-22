@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 type SiteHeaderProps = {
-  current: "landing" | "marketplace" | "demo";
+  current: "landing" | "marketplace" | "demo" | "about";
 };
 
 const LINKS = [
@@ -12,7 +13,7 @@ const LINKS = [
   { href: "/marketplace", label: "Marketplace", key: "marketplace" as const },
   { href: "#", label: "Developers", key: "developers" as const },
   { href: "#", label: "Ecosystem", key: "ecosystem" as const },
-  { href: "#", label: "About", key: "about" as const }
+  { href: "/about", label: "About", key: "about" as const }
 ];
 
 export function SiteHeader({ current }: SiteHeaderProps) {
@@ -28,16 +29,23 @@ export function SiteHeader({ current }: SiteHeaderProps) {
   return (
     <nav className={`siteNav${scrolled ? " scrolled" : ""}`}>
       <div className="siteNavInner">
-        <Link className="siteLogo" href="/">
-          <span className="siteLogoMark">Q</span>
-          QuotaDEX
+        <Link aria-label="QuotaDEX home" className="siteLogo" href="/">
+          <Image
+            alt="QuotaDEX logo"
+            className="siteLogoImage"
+            height={44}
+            priority
+            src="/QuotaDEX-logo.png"
+            width={44}
+          />
+          <span className="siteLogoText">QuotaDEX</span>
         </Link>
 
         <ul className="siteNavLinks">
           {LINKS.map((item) => {
             const isActive = item.key === current;
             const className = `siteNavLink${isActive ? " active" : ""}`;
-            if (item.key === "landing" || item.key === "marketplace") {
+            if (item.key === "landing" || item.key === "marketplace" || item.key === "about") {
               return (
                 <li key={item.key}>
                   <Link

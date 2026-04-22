@@ -51,6 +51,8 @@ describe("HomePage", () => {
   it("renders the landing hero, features, and timeline", async () => {
     await renderHomePage();
 
+    const logos = screen.getAllByAltText(/quotadex logo/i);
+
     expect(
       screen.getByRole("heading", {
         name: /the first decentralized ai compute marketplace/i
@@ -81,6 +83,11 @@ describe("HomePage", () => {
     expect(
       screen.getByRole("heading", { name: /agent \[ network \]/i })
     ).toBeInTheDocument();
+
+    expect(logos).toHaveLength(2);
+    logos.forEach((logo) => {
+      expect(logo).toHaveAttribute("src", expect.stringContaining("QuotaDEX-logo.png"));
+    });
 
     expect(screen.getByText(/idle ai compute finally has a market/i)).toBeInTheDocument();
     expect(screen.getByText(/© 2026 quotadex/i)).toBeInTheDocument();

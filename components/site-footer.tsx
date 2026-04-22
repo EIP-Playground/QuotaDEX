@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 
 const COLS = [
   { title: "Product", links: ["Marketplace", "Sellers", "Pricing"] },
@@ -13,8 +14,14 @@ export function SiteFooter() {
         <div className="siteFooterTop">
           <div className="siteFooterBrand">
             <div className="siteLogo" style={{ fontSize: 17 }}>
-              <span className="siteLogoMark">Q</span>
-              QuotaDEX
+              <Image
+                alt="QuotaDEX logo"
+                className="siteLogoImage"
+                height={40}
+                src="/QuotaDEX-logo.png"
+                width={40}
+              />
+              <span className="siteLogoText">QuotaDEX</span>
             </div>
             <p>Agent-to-Agent secondary market for AI compute. Built on Kite.</p>
           </div>
