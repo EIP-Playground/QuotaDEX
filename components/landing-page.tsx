@@ -15,6 +15,11 @@ import {
 } from "react-icons/tb";
 import { DotCanvas } from "@/components/landing/dot-canvas";
 import { GlobeSvg, GlobeSvgSpinning } from "@/components/landing/globe-svg";
+import {
+  HERO_ORBITS,
+  HeroOrbitSvg,
+  HeroOrbitSvgFront
+} from "@/components/landing/hero-orbit-svg";
 import { MeshSvg } from "@/components/landing/mesh-svg";
 import { Terminal } from "@/components/landing/terminal";
 import { SiteFooter } from "@/components/site-footer";
@@ -108,43 +113,24 @@ function VisualFor({ kind }: { kind: TimelineStory["visual"] }) {
 }
 
 function Hero() {
-  const orbits = [
-    { Icon: TbFileText,     radius: 280, dur: 38, start: 0,   tilt: 68,  ring: "a" },
-    { Icon: TbCpu,          radius: 280, dur: 38, start: 120, tilt: 68,  ring: "a" },
-    { Icon: TbRobot,        radius: 280, dur: 38, start: 240, tilt: 68,  ring: "a" },
-    { Icon: TbServer2,      radius: 340, dur: 55, start: 60,  tilt: -62, ring: "b" },
-    { Icon: TbShieldCheck,  radius: 340, dur: 55, start: 200, tilt: -62, ring: "b" },
-    { Icon: TbWallet,       radius: 340, dur: 55, start: 320, tilt: -62, ring: "b" }
+  const orbitIcons = [
+    { Icon: TbFileText,    orbit: "a", phase: 0   },
+    { Icon: TbCpu,         orbit: "a", phase: 120 },
+    { Icon: TbRobot,       orbit: "a", phase: 240 },
+    { Icon: TbServer2,     orbit: "b", phase: 60  },
+    { Icon: TbShieldCheck, orbit: "b", phase: 200 },
+    { Icon: TbWallet,      orbit: "b", phase: 320 }
   ];
 
   return (
     <section className="hero">
       <div className="heroMandala" aria-hidden="true">
         <div className="heroStage">
+          <HeroOrbitSvg orbits={HERO_ORBITS} icons={orbitIcons} />
           <div className="heroGlobeWrap">
             <GlobeSvgSpinning />
           </div>
-          <div className="heroOrbitLayer" aria-hidden="true">
-            {orbits.map((o, i) => {
-              const Icon = o.Icon;
-              return (
-                <div
-                  key={i}
-                  className={`heroOrbit heroOrbit-${o.ring}`}
-                  style={{
-                    ["--orbit-dur" as string]: `${o.dur}s`,
-                    ["--orbit-radius" as string]: `${o.radius}px`,
-                    ["--orbit-tilt" as string]: `${o.tilt}deg`,
-                    animationDelay: `${-(o.start / 360) * o.dur}s`
-                  }}
-                >
-                  <div className="heroOrbitIcon" style={{ animationDelay: `${-(o.start / 360) * o.dur}s` }}>
-                    <Icon />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <HeroOrbitSvgFront orbits={HERO_ORBITS} icons={orbitIcons} />
         </div>
       </div>
 

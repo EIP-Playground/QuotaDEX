@@ -138,6 +138,8 @@ a {
 
 .siteNavCta {
   justify-self: end;
+  position: relative;
+  overflow: hidden;
   background: var(--olive);
   color: #fff;
   border: none;
@@ -146,10 +148,11 @@ a {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: 0.2s;
+  transition: 0.25s;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  isolation: isolate;
 }
 
 .siteNavCta:hover {
@@ -183,20 +186,17 @@ a {
   justify-content: center;
   z-index: 0;
   pointer-events: none;
-  perspective: 1400px;
 }
 
 .heroStage {
   position: relative;
   width: 640px;
   height: 640px;
-  transform-style: preserve-3d;
 }
 
 .heroGlobeWrap {
   position: absolute;
   inset: 0;
-  transform: translateZ(0);
 }
 
 .heroGlobeLong {
@@ -214,93 +214,8 @@ a {
   .heroGlobeLong { animation: none; }
 }
 
-/* ───── Hero orbiting icons (3D) ───── */
-.heroOrbitLayer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  transform-style: preserve-3d;
-}
-
-.heroOrbit {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  transform-style: preserve-3d;
-  animation: heroOrbitSpin var(--orbit-dur, 40s) linear infinite;
-}
-
-.heroOrbit-a {
-  transform: rotateX(var(--orbit-tilt, 68deg));
-}
-
-.heroOrbit-b {
-  transform: rotateX(var(--orbit-tilt, -62deg)) rotateY(22deg);
-}
-
-.heroOrbitIcon {
-  position: absolute;
-  left: calc(var(--orbit-radius, 280px) * -0.5);
-  top: calc(var(--orbit-radius, 280px) * -0.5);
-  width: var(--orbit-radius, 280px);
-  height: var(--orbit-radius, 280px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  pointer-events: none;
-  transform-style: preserve-3d;
-}
-
-.heroOrbitIcon::before {
-  content: "";
-  display: block;
-  width: 40px;
-  height: 40px;
-  position: relative;
-}
-
-.heroOrbitIcon svg {
-  position: absolute;
-  top: -8px;
-  left: 50%;
-  width: 40px;
-  height: 40px;
-  color: var(--gold);
-  opacity: 0.7;
-  filter: drop-shadow(0 0 8px rgba(200, 164, 53, 0.5));
-  transform: translateX(-50%) rotateX(calc(var(--orbit-tilt, 68deg) * -1));
-  animation: heroOrbitIconCounter var(--orbit-dur, 40s) linear infinite;
-}
-
-.heroOrbit-b .heroOrbitIcon svg {
-  transform: translateX(-50%) rotateY(-22deg) rotateX(calc(var(--orbit-tilt, -62deg) * -1));
-}
-
-@keyframes heroOrbitSpin {
-  from { transform: rotateX(var(--orbit-tilt, 68deg)) rotateZ(0deg); }
-  to   { transform: rotateX(var(--orbit-tilt, 68deg)) rotateZ(360deg); }
-}
-
-.heroOrbit-b {
-  animation-name: heroOrbitSpinB;
-}
-
-@keyframes heroOrbitSpinB {
-  from { transform: rotateX(var(--orbit-tilt, -62deg)) rotateY(22deg) rotateZ(0deg); }
-  to   { transform: rotateX(var(--orbit-tilt, -62deg)) rotateY(22deg) rotateZ(-360deg); }
-}
-
-@keyframes heroOrbitIconCounter {
-  from { transform: translateX(-50%) rotateX(calc(var(--orbit-tilt, 68deg) * -1)) rotateZ(0deg); }
-  to   { transform: translateX(-50%) rotateX(calc(var(--orbit-tilt, 68deg) * -1)) rotateZ(-360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .heroOrbit,
-  .heroOrbitIcon svg { animation: none; }
-}
+/* ───── Hero orbiting icons (2D elliptical, with z-occlusion) ───── */
+/* The orbit SVG uses <animateMotion> + <mpath> — no CSS animation needed. */
 
 /* ───── Mesh orbit nodes (Agent Network) ───── */
 .meshOrbit {
@@ -385,6 +300,8 @@ a {
 }
 
 .btnPrimary {
+  position: relative;
+  overflow: hidden;
   background: var(--olive);
   color: #fff;
   border: none;
@@ -393,10 +310,50 @@ a {
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
-  transition: 0.2s;
+  transition: 0.25s;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  isolation: isolate;
+}
+
+.btnPrimary::before,
+.btnGhost::before,
+.siteNavCta::before,
+.demoRunBtn::before,
+.tryItBtn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 35%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 65%,
+    transparent 100%
+  );
+  transform: translateX(-120%) skewX(-12deg);
+  transition: transform 0.8s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.btnPrimary:hover::before,
+.btnGhost:hover::before,
+.siteNavCta:hover::before,
+.demoRunBtn:not(:disabled):hover::before,
+.tryItBtn:hover::before {
+  transform: translateX(120%) skewX(-12deg);
+}
+
+.btnPrimary > *,
+.btnGhost > *,
+.siteNavCta > *,
+.demoRunBtn > *,
+.tryItBtn > * {
+  position: relative;
+  z-index: 1;
 }
 
 .btnPrimary:hover {
@@ -406,6 +363,8 @@ a {
 }
 
 .btnGhost {
+  position: relative;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.4);
   color: var(--text);
   border: 1px solid var(--border);
@@ -414,10 +373,22 @@ a {
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
-  transition: 0.2s;
+  transition: 0.25s;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  isolation: isolate;
+}
+
+.btnGhost::before {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 35%,
+    rgba(58, 74, 26, 0.15) 50%,
+    transparent 65%,
+    transparent 100%
+  );
 }
 
 .btnGhost:hover {
@@ -746,11 +717,11 @@ a {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(900px, 100%);
-  height: 560px;
+  width: min(1000px, 110%);
+  height: 620px;
   transform: translate(-50%, -50%);
-  opacity: 0.35;
-  filter: blur(6px);
+  opacity: 1;
+  filter: none;
   pointer-events: none;
   z-index: 0;
 }
@@ -1319,6 +1290,8 @@ a {
   right: 28px;
   bottom: 48px;
   z-index: 300;
+  overflow: hidden;
+  isolation: isolate;
   background: var(--olive);
   color: #fff;
   border: none;
