@@ -1,257 +1,277 @@
 # QuotaDEX
 
-QuotaDEX is an Agent-to-Agent (A2A) secondary market for AI compute. The MVP uses a Gateway + Supabase + Redis + Escrow design so AI agents can buy and sell idle model quota through HTTP 402 interception and Web3 micro-payments on Kite AI.
+> **Language / 语言:** English (current) · [中文](README.zh.md)
 
-AgentBazaar is the planned parent Agent Marketplace for the broader vision. Its positioning is an Agent Marketplace that showcases the Accountable Agent Commerce Layer. QuotaDEX is the first vertical service planned inside that future AgentBazaar marketplace.
+**The first decentralized AI compute marketplace — built for agents, settled on-chain.**
 
-当前仓库已经完成 `Phase 7`：Gateway 骨架、Supabase schema、Seller 生命周期、`quote`、`verify(Mock)`、Seller worker、Buyer demo、自定义 Escrow 链上原型都已落地。当前主线进入 `Phase 8`：`Demo Hardening`。当前对外演示的主支付路线是 `Custom Escrow`，`Mock` 作为稳定 fallback；`Pieverse Facilitator + Agent Passport + Kite MCP + real X-PAYMENT` 与 `SDK / Dashboard` 已统一放入 Future Plan。
+QuotaDEX is an Agent-to-Agent (A2A) secondary market where any LLM seller can monetize idle quota and any autonomous agent can buy compute on demand — no API keys, no contracts, no human in the loop. Every job is quoted via HTTP 402, backed by a custom Escrow contract on Kite AI, and settled in PYUSD with an explorer-verifiable proof.
 
-## Read First
+Part of the **AgentBazaar** vision: an open, accountable commerce layer for the autonomous-agent economy.
 
-Before writing code, read these documents in order:
+---
 
-1. [docs/project/QuotaDEX 技术规格说明书 v3.0 (Final).md](docs/project/QuotaDEX%20%E6%8A%80%E6%9C%AF%E8%A7%84%E6%A0%BC%E8%AF%B4%E6%98%8E%E4%B9%A6%20v3.0%20%28Final%29.md)
-2. [docs/mvp-rules(swen).md](docs/mvp-rules(swen).md)
-3. [docs/development-order(swen).md](docs/development-order(swen).md)
-4. [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md)
-5. [docs/frontend-requirements(swen).md](docs/frontend-requirements(swen).md)
-6. [docs/payment-migration-pieverse-facilitator(swen).md](docs/payment-migration-pieverse-facilitator(swen).md)
+## Table of Contents
 
-## Current Phase
+- [Why QuotaDEX](#why-quotadex)
+- [How It Works](#how-it-works)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [API Reference](#api-reference)
+- [Environment Variables](#environment-variables)
+- [Local Development](#local-development)
+- [Current Status](#current-status)
+- [Roadmap](#roadmap)
 
-Current delivery summary:
+---
 
-- Current phase: `Phase 8 - Demo Hardening`
-- Current step: `Step 2/4` repeat the Escrow-backed primary loop and capture explorer proof
-- Primary payment route: `Custom Escrow on Kite`
-- Stable fallback: `Mock payment flow`
-- Future plan: `Pieverse Facilitator`, `Agent Passport`, `Kite MCP`, `real X-PAYMENT`, `buyer-sdk`, `seller-sdk`, `Dashboard`
-- Latest checkpoint: `Mock E2E passed`
-  - `quote -> verify(mock) -> seller done -> buyer final result`
+## Why QuotaDEX
 
-## Finished Phases
+Thousands of LLM instances sit idle between requests. Meanwhile, autonomous agents — research bots, reasoning pipelines, long-running tasks — need bursty compute with no credit card and no human approval flow.
 
-- `Phase 0 - project skeleton`
-  - `Next.js`, `app/api`, `lib`, `env`
-- `Phase 1 - data layer`
-  - `Supabase`, `sellers`, `jobs`, `events`, `migration`
-- `Phase 2 - seller lifecycle`
-  - `register`, `heartbeat`, `offline`
-- `Phase 3 - quote`
-  - request validation, seller reservation, `fingerprint`, Redis quote context, `402`
-- `Phase 4 - verify (Mock)`
-  - recompute `fingerprint`, load quote context, mock `tx_hash`, create `paid` job, move seller to `busy`
-- `Phase 5 - seller worker`
-  - self-check, register, heartbeat, Realtime subscribe, `start`, `complete`, `fail`
-- `Phase 6 - buyer demo`
-  - `quote`, mock pay, `verify`, Realtime wait, polling fallback
-- `Phase 7 - custom Escrow real-chain primary route`
-  - Escrow contract, real `deposit`, receipt validation, `release`, `refund`
-- `Mock E2E checkpoint`
-  - local Gateway + Supabase + Redis + seller worker + buyer demo passed end to end
-- `Future integration groundwork`
-  - facilitator helper, x402-style `accepts`, facilitator env config, `verify + settle`, `buyer-demo` facilitator mode
+QuotaDEX solves this with three primitives:
 
-## Full Tracker
+| Primitive | What it does |
+| --- | --- |
+| **x402 Quote** | Buyer requests compute; Gateway fingerprints the request, reserves a seller, and returns `402` with `payment_id` and price |
+| **Escrow on Kite** | Buyer deposits PYUSD into the escrow contract; Gateway releases on completion and refunds on failure |
+| **A2A Settlement** | Seller receives the assigned job via Supabase Realtime, runs it, and callbacks trigger on-chain settlement |
 
-For the full phase path, step progress, and unfinished tasks:
+---
 
-- [docs/phase-tracker(swen).md](docs/phase-tracker(swen).md)
+## How It Works
+
+```text
+Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
+     │                               │                               │
+     │──POST /jobs/quote────────────▶│                               │
+     │◀──402 { payment_id, price }───│                               │
+     │                               │                               │
+     │  [approve + deposit on-chain] │                               │
+     │──POST /jobs/verify───────────▶│                               │
+     │◀──200 { job_id }──────────────│                               │
+     │                               │──Realtime push───────────────▶│
+     │                               │◀─POST /jobs/:id/start─────────│
+     │                               │◀─POST /jobs/:id/complete──────│
+     │                               │  Escrow.release(payment_id)   │
+     │◀──job result──────────────────│                               │
+```
+
+1. **Quote** — Buyer calls `/jobs/quote`. Gateway fingerprints the request, reserves an available seller, caches the quote context in Redis, and returns `402` with a price and `payment_id`.
+2. **Deposit** — Buyer approves the PYUSD amount and calls `Escrow.deposit(paymentId, seller, amount)` on Kite.
+3. **Verify** — Buyer calls `/jobs/verify` with the on-chain receipt. Gateway validates the deposit, creates a formal `paid` job, and moves the seller to `busy`.
+4. **Execute** — Seller receives the job via Supabase Realtime, runs it, and calls back `start → complete` (or `fail`).
+5. **Settle** — On `complete`, Gateway calls `Escrow.release(paymentId)`. On `fail`, Gateway calls `Escrow.refund(paymentId)`.
+
+---
+
+## Architecture
+
+```text
+┌──────────────────────────────────────────────────────┐
+│                    Next.js Gateway                   │
+│  ┌─────────────┐  ┌────────────┐  ┌───────────────┐ │
+│  │ Seller APIs │  │  Job APIs  │  │ Dashboard APIs│ │
+│  │  register   │  │   quote    │  │   summary     │ │
+│  │  heartbeat  │  │   verify   │  │   market      │ │
+│  │  offline    │  │ start/done │  │   events      │ │
+│  └─────────────┘  └────────────┘  └───────────────┘ │
+└────────────┬───────────────┬────────────────────────┘
+             │               │
+     ┌───────▼──────┐ ┌──────▼───────┐
+     │   Supabase   │ │  Upstash     │
+     │  (Postgres + │ │  Redis       │
+     │   Realtime)  │ │  (quotes)    │
+     └──────────────┘ └──────────────┘
+             │
+     ┌───────▼──────────────┐
+     │   Kite AI (EVM)      │
+     │  QuotaDEXEscrow.sol  │
+     │  PYUSD payments      │
+     └──────────────────────┘
+```
+
+**Key design decisions:**
+
+- `payment_id` and `job_id` are intentionally separate — payment identity is established at quote time, job identity at verify time.
+- `fingerprint` is reused as `payment_id` in the MVP, binding the exact request parameters to the on-chain deposit.
+- Supabase is the single source of truth for all formal state transitions.
+- Redis stores only short-lived quote context (TTL-bounded).
+- Seller state transitions flow exclusively through Gateway APIs.
+
+---
 
 ## Project Structure
-
-The repo now contains the current gateway project structure:
 
 ```text
 app/
   api/v1/
-    sellers/
-      register/
-      heartbeat/
-      offline/
-    jobs/
-      quote/
-      verify/
-      [id]/
-        start/
-        complete/
-        fail/
+    sellers/          # Seller lifecycle: register, heartbeat, offline
+    jobs/             # Buyer flow: quote, verify, start, complete, fail
+    dashboard/        # Read-only analytics: summary, market, events
+  (pages)/            # Frontend: landing, marketplace, demo, about
+components/           # UI components
 lib/
-  env.ts
-  errors.ts
-  fingerprint.ts
-  jobs.ts
+  env.ts              # Env validation
+  fingerprint.ts      # Request fingerprinting (reused as payment_id)
+  jobs.ts             # Job state helpers
+  sellers.ts          # Seller reservation + state transitions
+  redis.ts            # Quote context cache
+  supabase.ts         # DB client
   chain/
-  redis.ts
-  sellers.ts
-  supabase.ts
+    escrow.ts         # Escrow ABI + on-chain helpers
 supabase/
-  migrations/
-docs/
-scripts/
+  migrations/         # sellers, jobs, events schema
 contracts/
+  QuotaDEXEscrow.sol  # Solidity escrow: deposit, release, refund
+scripts/
+  seller-worker.mjs   # Local seller demo (register → listen → complete)
+  buyer-demo.mjs      # Local buyer demo (quote → deposit → verify → wait)
+docs/                 # Product spec, MVP rules, dev sequence, phase tracker
 ```
 
-### Directory Responsibilities
+---
 
-- `app/api/v1/*`
-  Gateway HTTP entrypoints for seller registration, buyer quote/verify, and seller job status callbacks.
-- `lib/*`
-  Shared server helpers for env loading, error responses, fingerprint generation, Redis, and Supabase.
-- `lib/chain/*`
-  Shared chain helpers for Escrow ABI, payment ID normalization, and on-chain amount conversion.
-- `supabase/migrations/*`
-  Database schema for `sellers`, `jobs`, and `events`.
-- `docs/*`
-  Product spec, MVP rules, and development sequence.
-- `scripts/*`
-  Local demo helpers such as the seller worker and later buyer happy-path scripts.
-- `contracts/*`
-  Solidity escrow contracts for on-chain payment funding, release, and refund.
+## API Reference
 
-## Current Implementation
+### Seller Lifecycle
 
-- A minimal `Next.js App Router` gateway application is in place.
-- Seller lifecycle routes are implemented:
-  - `POST /api/v1/sellers/register`
-  - `POST /api/v1/sellers/heartbeat`
-  - `POST /api/v1/sellers/offline`
-- The `POST /api/v1/jobs/quote` route is implemented:
-  - validates `buyer_id / capability / prompt`
-  - reserves a seller with a conditional database update
-  - builds `fingerprint` and reuses it as `payment_id`
-  - stores `quote:{payment_id}` in Redis
-  - returns `402 Payment Required`
-- The `POST /api/v1/jobs/verify` route is implemented:
-  - recomputes `fingerprint` from the payload
-  - loads `quote:{payment_id}` from Redis
-  - verifies real Escrow deposit receipts for full transaction hashes
-  - keeps mock `tx_hash` validation as a local fallback
-  - supports facilitator `X-PAYMENT` with `verify + settle`
-  - stores facilitator-settled `txHash` when available, otherwise allows `null`
-  - creates a formal `paid` job
-  - moves the seller from `reserved` to `busy`
-- The seller execution callbacks are implemented:
-  - `POST /api/v1/jobs/:id/start`
-  - `POST /api/v1/jobs/:id/complete`
-  - `POST /api/v1/jobs/:id/fail`
-  - `complete` now triggers Gateway-side `Escrow.release(payment_id)`
-  - `fail` now triggers Gateway-side `Escrow.refund(payment_id)`
-- A minimal seller worker script exists:
-  - `scripts/seller-worker.mjs`
-  - local self-check before startup
-  - seller register and heartbeat
-  - Supabase Realtime subscription for seller-assigned jobs
-  - Gateway callbacks for `start / complete / fail`
-- The polling fallback endpoint is implemented:
-  - `GET /api/v1/jobs/:id`
-- A minimal buyer demo script exists:
-  - `scripts/buyer-demo.mjs`
-  - `quote -> mock pay or real approve+deposit -> verify -> wait result`
-  - `facilitator` mode via `BUYER_PAYMENT_MODE=facilitator` and `BUYER_X_PAYMENT`
-  - Supabase Realtime result subscription
-  - polling fallback through `GET /api/v1/jobs/:id`
-- A minimal escrow contract skeleton exists:
-  - `contracts/QuotaDEXEscrow.sol`
-  - `deposit(paymentId, seller, amount)`
-  - `release(paymentId)`
-  - `refund(paymentId)`
-- The Escrow ABI and chain helpers already exist:
-  - `contracts/QuotaDEXEscrow.abi.json`
-  - `lib/chain/escrow.ts`
-- Shared helpers already exist for:
-  - env loading
-  - error responses
-  - fingerprint generation
-  - quote and verify parsing
-  - quote context storage and loading
-  - seller reservation and busy/idle transitions
-  - seller execution status transitions
-  - Redis access
-  - Supabase access
-  - seller request parsing
-- The initial Supabase migration is in place, including `payment_id`.
-- A minimal landing page exists so the app can build and run locally.
-- A basic contract note exists in `contracts/README.md`.
+| Method | Path                           | Description                                   |
+| ------ | ------------------------------ | --------------------------------------------- |
+| `POST` | `/api/v1/sellers/register`     | Register a seller with a capability and price |
+| `POST` | `/api/v1/sellers/heartbeat`    | Keep seller status as `online`                |
+| `POST` | `/api/v1/sellers/offline`      | Mark seller as offline                        |
+
+### Job Flow
+
+| Method | Path                           | Description                                              |
+| ------ | ------------------------------ | -------------------------------------------------------- |
+| `POST` | `/api/v1/jobs/quote`           | Get a quote; returns `402` with `payment_id` and price   |
+| `POST` | `/api/v1/jobs/verify`          | Submit on-chain receipt; creates the paid job            |
+| `GET`  | `/api/v1/jobs/:id`             | Poll job status (fallback for Realtime)                  |
+| `POST` | `/api/v1/jobs/:id/start`       | Seller signals job has started                           |
+| `POST` | `/api/v1/jobs/:id/complete`    | Seller signals completion; triggers `Escrow.release`     |
+| `POST` | `/api/v1/jobs/:id/fail`        | Seller signals failure; triggers `Escrow.refund`         |
+
+### Dashboard
+
+| Method | Path                           | Description                                   |
+| ------ | ------------------------------ | --------------------------------------------- |
+| `GET`  | `/api/v1/dashboard/summary`    | Aggregate stats (sellers, jobs, volume)       |
+| `GET`  | `/api/v1/dashboard/market`     | Active sellers and their capabilities         |
+| `GET`  | `/api/v1/dashboard/events`     | Recent job events feed                        |
+
+---
 
 ## Environment Variables
 
-Copy `.env.example` and fill the required values.
-
-These variables come from four places:
-
-- `Supabase`
-  This is the hosted online database and Realtime service used by the project.
-  Get these values from your Supabase project dashboard.
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-  - `SUPABASE_SERVICE_ROLE_KEY`
-
-- `Upstash Redis`
-  This is the hosted online cache used for short-lived quote context.
-  Get these values from your Upstash Redis database dashboard.
-  - `UPSTASH_REDIS_REST_URL`
-  - `UPSTASH_REDIS_REST_TOKEN`
-
-- `Gateway server config`
-  `GATEWAY_SALT` is a random secret string generated by your team.
-  It is used when building the request fingerprint and should stay server-side only.
-
-- `Blockchain config`
-  These values are used later for real payment verification, Facilitator-based payment migration, and Escrow contract operations.
-  - `KITE_RPC_URL`: the RPC endpoint for the Kite network
-  - `PIEVERSE_FACILITATOR_BASE_URL`: the Pieverse facilitator base URL
-  - `KITE_PAYMENT_ASSET_ADDRESS`: the payment asset address used for the facilitator/x402 path
-  - `GATEWAY_MERCHANT_WALLET`: the merchant wallet address that receives facilitator-settled funds
-  - `PYUSD_CONTRACT_ADDRESS`: the PYUSD token contract address
-  - `PYUSD_DECIMALS`: token decimals, default `6` for PYUSD in the demo flow
-  - `ESCROW_CONTRACT_ADDRESS`: your deployed Escrow contract address
-  - `GATEWAY_PRIVATE_KEY`: the private key of the Gateway wallet
-  - `BUYER_PRIVATE_KEY`: optional buyer wallet private key for real `approve + deposit`
-
-Important:
-
-- `GATEWAY_PRIVATE_KEY` is the private key of a normal wallet controlled by the Gateway.
-- It is not the "private key" of `ESCROW_CONTRACT_ADDRESS`.
-- Contracts do not have private keys.
+Copy `.env.example` and fill in the required values.
 
 ```env
+# Supabase — database and Realtime
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+
+# Upstash Redis — short-lived quote context cache
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
-GATEWAY_SALT=
-KITE_RPC_URL=
+
+# Gateway config — keep server-side only
+GATEWAY_SALT=                           # Random secret used in fingerprint generation
+
+# Kite AI / blockchain
+KITE_RPC_URL=                           # RPC endpoint for the Kite network
+ESCROW_CONTRACT_ADDRESS=                # Deployed QuotaDEXEscrow address
+GATEWAY_PRIVATE_KEY=                    # Gateway wallet private key (NOT the contract's)
+PYUSD_CONTRACT_ADDRESS=                 # PYUSD token contract address
+PYUSD_DECIMALS=6                        # Token decimals (default: 6)
+
+# Pieverse Facilitator (future / optional)
 PIEVERSE_FACILITATOR_BASE_URL=https://facilitator.pieverse.io
 KITE_PAYMENT_ASSET_ADDRESS=
 GATEWAY_MERCHANT_WALLET=
-PYUSD_CONTRACT_ADDRESS=
-PYUSD_DECIMALS=6
-ESCROW_CONTRACT_ADDRESS=
-GATEWAY_PRIVATE_KEY=
-BUYER_PRIVATE_KEY=
+
+# Buyer demo script (optional)
+BUYER_PRIVATE_KEY=                      # Buyer wallet for real approve + deposit
 ```
+
+> `GATEWAY_PRIVATE_KEY` is the private key of a normal wallet controlled by the Gateway. Contracts do not have private keys.
+
+---
 
 ## Local Development
 
-Install dependencies and start the gateway:
+Prerequisites: Node.js ≥ 20, pnpm
 
 ```bash
-npm install
-npm run dev
+# Install dependencies
+pnpm install
+
+# Start the dev server
+pnpm dev
+
+# Type-check
+pnpm typecheck
+
+# Run tests
+pnpm test
 ```
 
-Type-check once dependencies are installed:
+Run the demo locally (requires `.env` filled with Supabase + Redis credentials):
 
 ```bash
-npm run typecheck
+# Terminal 1 — start the gateway
+pnpm dev
+
+# Terminal 2 — start a seller worker
+node scripts/seller-worker.mjs
+
+# Terminal 3 — run a buyer demo (mock payment)
+node scripts/buyer-demo.mjs
 ```
 
-## Implementation Notes
+For a real on-chain flow, set `BUYER_PAYMENT_MODE=escrow` and provide `BUYER_PRIVATE_KEY`.
 
-- `payment_id` and `job_id` are intentionally separate.
-- `fingerprint` is reused as `payment_id` in the MVP.
-- `Supabase` is the single source of truth for formal state.
-- `Redis` only stores short-lived quote context and optional short-term dedupe state.
-- Seller state changes should flow through Gateway APIs rather than direct client-side writes.
+---
+
+## Current Status
+
+### Phase 8 — Demo Hardening
+
+| Area                                                | Status          |
+| --------------------------------------------------- | --------------- |
+| Gateway skeleton (Next.js App Router)               | Done            |
+| Supabase schema (sellers, jobs, events)             | Done            |
+| Seller lifecycle (register / heartbeat / offline)   | Done            |
+| Quote + fingerprint + Redis cache                   | Done            |
+| Verify (mock fallback)                              | Done            |
+| Seller worker script                                | Done            |
+| Buyer demo script                                   | Done            |
+| Custom Escrow on Kite (deposit / release / refund)  | Done            |
+| Mock E2E end-to-end pass                            | Done            |
+| Escrow-backed demo hardening                        | **In progress** |
+
+Primary payment route: **Custom Escrow on Kite**
+Stable fallback: **Mock payment flow**
+
+---
+
+## Roadmap
+
+- [ ] Pieverse Facilitator integration (`X-PAYMENT` header flow)
+- [ ] Agent Passport (decentralized agent identity)
+- [ ] Kite MCP integration
+- [ ] Real x402 payment header (production)
+- [ ] Buyer SDK
+- [ ] Seller SDK
+- [ ] Dashboard (web UI for analytics + job history)
+- [ ] AgentBazaar parent marketplace (multi-vertical)
+
+---
+
+## Related
+
+- **AgentBazaar** — the planned parent marketplace hosting multiple A2A verticals, all sharing the same quote-escrow-settle accountability layer.
+- **Kite AI** — the EVM-compatible chain used for on-chain settlement.
+- **PYUSD** — the payment token used in all escrow transactions.
+- **x402** — the HTTP payment protocol used for machine-native payment negotiation.
