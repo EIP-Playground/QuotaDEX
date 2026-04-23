@@ -109,6 +109,7 @@ export function HeroOrbitSvg({ orbits, icons }: HeroOrbitSvgProps) {
   return (
     <svg
       viewBox="0 0 300 260"
+      overflow="visible"
       style={{ width: "100%", height: "100%", position: "absolute", inset: 0, pointerEvents: "none" }}
       aria-hidden="true"
     >
@@ -165,6 +166,7 @@ export function HeroOrbitSvgFront({ orbits, icons }: HeroOrbitSvgProps) {
   return (
     <svg
       viewBox="0 0 300 260"
+      overflow="visible"
       style={{ width: "100%", height: "100%", position: "absolute", inset: 0, pointerEvents: "none" }}
       aria-hidden="true"
     >
@@ -201,6 +203,6 @@ export function HeroOrbitSvgFront({ orbits, icons }: HeroOrbitSvgProps) {
 }
 
 export const HERO_ORBITS: Orbit[] = [
-  { id: "a", rx: 145, ry: 90, tilt: -18, dur: 24 },
-  { id: "b", rx: 170, ry: 70, tilt: 22,  dur: 34, reverse: true }
+  { id: "a", rx: 110, ry: 65, tilt: -18, dur: 24 },
+  { id: "b", rx: 125, ry: 50, tilt: 22,  dur: 34, reverse: true }
 ];
