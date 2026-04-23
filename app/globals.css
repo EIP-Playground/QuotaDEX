@@ -162,7 +162,7 @@ a {
 
 /* HERO */
 .hero {
-  min-height: 90vh;
+  min-height: 100vh;
   display: grid;
   grid-template-columns: 1fr;
   text-align: center;
@@ -614,7 +614,7 @@ a {
 
 .tlVisual {
   background: var(--cream2);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: 18px;
   height: 340px;
   overflow: hidden;
@@ -622,6 +622,18 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 0;
+  transform: translateX(56px);
+  transition: opacity 0.65s ease, transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tlBody.reverse .tlVisual {
+  transform: translateX(-56px);
+}
+
+.tlItemVisible .tlVisual {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 /* TERMINAL */
@@ -1826,6 +1838,11 @@ a {
 
   .tlVisual {
     height: 260px;
+    transform: translateY(40px);
+  }
+
+  .tlBody.reverse .tlVisual {
+    transform: translateY(40px);
   }
 
   .dash {

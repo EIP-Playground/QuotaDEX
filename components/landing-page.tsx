@@ -213,8 +213,10 @@ function FeatureCards() {
 function TimelineSection() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const nodeRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const itemRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [fill, setFill] = useState(0);
   const [lit, setLit] = useState<number[]>([]);
+  const [itemVisible, setItemVisible] = useState<boolean[]>([false, false, false]);
 
   useEffect(() => {
     const update = () => {
@@ -237,6 +239,30 @@ function TimelineSection() {
     return () => {
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    const observers = itemRefs.current.map((el, i) => {
+      if (!el) return null;
+      const ob = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            setItemVisible((prev) => {
+              const next = [...prev];
+              next[i] = true;
+              return next;
+            });
+            ob.disconnect();
+          }
+        },
+        { threshold: 0.2 }
+      );
+      ob.observe(el);
+      return ob;
+    });
+    return () => {
+      observers.forEach((ob) => ob?.disconnect());
     };
   }, []);
 
@@ -268,8 +294,14 @@ function TimelineSection() {
           />
         ))}
 
-        {TIMELINE.map((item) => (
-          <div className="tlItem" key={item.title}>
+        {TIMELINE.map((item, i) => (
+          <div
+            className={`tlItem${itemVisible[i] ? " tlItemVisible" : ""}`}
+            key={item.title}
+            ref={(el) => {
+              itemRefs.current[i] = el;
+            }}
+          >
             <div className="tlTitle">
               <h3>
                 {item.title} <span className="br">{item.br}</span>
