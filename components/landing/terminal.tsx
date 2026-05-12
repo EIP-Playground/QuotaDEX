@@ -21,7 +21,7 @@ const TERM_LINES: TermLine[] = [
   { text: "-------------------------------------------", c: "tm", p: 350 },
   { text: "✓ Seller reserved · fingerprint=0xa4f2…", c: "tc" },
   { text: "✓ x402 Payment Required · payment_id set", c: "tc" },
-  { text: "✓ Escrow.deposit confirmed on Kite", c: "tc", p: 500 },
+  { text: "✓ Test USDT settlement registered on Kite", c: "tc", p: 500 },
   { text: "Next:", c: "tp" },
   { text: "  → POST /api/v1/jobs/verify", c: "tm" },
   { text: "  → agent: assign → start → complete", c: "tm" },

@@ -6,11 +6,13 @@ Current scope:
 
 - `QuotaDEXEscrow.sol`
   - `registerFacilitatorPayment(paymentId, buyer, seller, amount, settlementTxHash)`
-  - `deposit(paymentId, seller, amount)`
   - `release(paymentId)`
   - `refund(paymentId)`
+  - `sweepNative(recipient, amount)`
+  - `recoverUnsupportedToken(token, recipient, amount)`
+  - `recoverExcessPaymentToken(recipient, amount)`
 - `QuotaDEXEscrow.abi.json`
-  - ABI used by Gateway receipt verification and settlement execution
+  - ABI used by Gateway settlement registration and execution
 
 Assumptions:
 
@@ -19,9 +21,12 @@ Assumptions:
 - `gateway` is a single EOA with payment registration, release, and refund permission
 - `paymentToken` is the Kite payment token, currently Test USDT on Kite Testnet
 - Standard x402 facilitator settlement transfers tokens to the escrow contract first; Gateway verifies that transfer off-chain and then registers the payment on-chain
+- The escrow contract does not need native KITE for gas. Gateway transactions consume gas from the Gateway EOA configured by `GATEWAY_PRIVATE_KEY`.
+- Normal native KITE transfers to escrow are rejected. `sweepNative` exists only to recover native balance forced into the contract.
+- `recoverExcessPaymentToken` can only move Test USDT above `totalLiabilities`; it cannot withdraw funds backing registered payments.
 
 Test coverage:
 
 - `tests/contracts/QuotaDEXEscrow.test.ts` compiles the Solidity source with `solc`
 - tests run against a local `anvil` chain via `viem`
-- covered paths: facilitator registration, duplicate guards, insufficient escrow balance, release, refund
+- covered paths: facilitator registration, duplicate guards, insufficient escrow balance, release, refund, native sweep, unsupported token recovery, excess payment-token recovery

@@ -49,7 +49,7 @@ Notes:
 Legacy local demo buyer:
 
 - calls `POST /api/v1/jobs/quote`
-- either simulates a mock payment, performs legacy direct `approve + deposit`, or attaches a prebuilt `X-PAYMENT`
+- either simulates a mock payment or attaches a prebuilt `X-PAYMENT`
 - calls `POST /api/v1/jobs/verify`
 - waits for the final result through Realtime, with polling fallback
 
@@ -67,28 +67,20 @@ Optional local overrides:
 - `BUYER_PROMPT` default: `hello from buyer demo`
 - `BUYER_RESULT_TIMEOUT_MS` default: `30000`
 - `BUYER_PAYMENT_MODE`
-  - omitted: auto-detect `chain` when `BUYER_PRIVATE_KEY` exists, otherwise `mock`
+  - omitted: use `mock`
   - `mock`: use the existing local mock payment flow
-  - `chain`: use `approve + deposit` against the custom Escrow route
   - `facilitator`: send a real `X-PAYMENT` header to the Gateway
 
 To enable current x402 escrow mode:
 
 - set `BUYER_PAYMENT_MODE=facilitator`
+- set `BUYER_ID` to the buyer Passport payer address
 - set `BUYER_X_PAYMENT` to a real `X-PAYMENT` value produced by Kite Passport `approve_payment`
 - ensure Gateway has `KITE_PAYMENT_ASSET_ADDRESS`, `PAYMENT_TOKEN_DECIMALS`, `PAYMENT_CURRENCY`, `ESCROW_CONTRACT_ADDRESS`, and `GATEWAY_PRIVATE_KEY`
 
-To enable legacy direct on-chain payment mode:
-
-- set `BUYER_PRIVATE_KEY`
-- set `KITE_RPC_URL`
-- set `PYUSD_CONTRACT_ADDRESS`
-- set `ESCROW_CONTRACT_ADDRESS`
-- optionally set `PYUSD_DECIMALS` default: `6`
-
 In real payment mode:
 
-- `BUYER_ID` must match the wallet address derived from `BUYER_PRIVATE_KEY`
+- `BUYER_ID` should be the buyer Passport payer address
 - the quoted `seller_id` must already be an EVM address
 
-The legacy direct mode is for local compatibility only. Production verification expects `X-PAYMENT`.
+Direct `approve + deposit` mode has been removed from the production escrow contract. Production verification expects `X-PAYMENT`.

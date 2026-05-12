@@ -93,7 +93,7 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
 **Key design decisions:**
 
 - `payment_id` and `job_id` are intentionally separate — payment identity is established at quote time, job identity at verify time.
-- `fingerprint` is reused as `payment_id` in the MVP, binding the exact request parameters to the on-chain deposit.
+- `fingerprint` is reused as `payment_id` in the MVP, binding the exact request parameters to the on-chain escrow registration.
 - Supabase is the single source of truth for all formal state transitions.
 - Redis stores only short-lived quote context (TTL-bounded).
 - Seller state transitions flow exclusively through Gateway APIs.
@@ -123,10 +123,10 @@ lib/
 supabase/
   migrations/         # sellers, jobs, events schema
 contracts/
-  QuotaDEXEscrow.sol  # Solidity escrow: x402 registration, deposit, release, refund
+  QuotaDEXEscrow.sol  # Solidity escrow: x402 registration, release, refund
 scripts/
   seller-worker.mjs   # Local seller demo (register → listen → complete)
-  buyer-demo.mjs      # Local buyer demo (quote → deposit → verify → wait)
+  buyer-demo.mjs      # Local buyer demo (quote → verify → wait)
 skills/
   quotadex-buyer/     # English Buyer Agent workflow for Passport + x402
   quotadex-seller/    # English Seller Agent workflow for Passport identity
@@ -201,11 +201,15 @@ PAYMENT_TOKEN_DECIMALS=18
 PAYMENT_CURRENCY=USDT
 ALLOW_MOCK_PAYMENTS=false
 
-# Legacy local buyer demo only
+# One-click Kite Testnet demo. These wallets spend and receive Test USDT only.
 BUYER_PRIVATE_KEY=
+DEMO_SELLER_PRIVATE_KEY=
+DEMO_PRICE_PER_TASK=0.001
+DEMO_RATE_LIMIT=3
 ```
 
 > `GATEWAY_PRIVATE_KEY` is the private key of a normal wallet controlled by the Gateway. Contracts do not have private keys.
+> The public `/demo` page uses `BUYER_PRIVATE_KEY` and `DEMO_SELLER_PRIVATE_KEY` server-side only. Never expose them to the browser.
 
 ---
 
@@ -263,7 +267,7 @@ Production verification requires `X-PAYMENT` by default. Set `ALLOW_MOCK_PAYMENT
 | Passport Skills for Buyer and Seller agents         | Done            |
 
 Primary payment route: **Kite x402 → QuotaDEXEscrow → Seller/Buyer**
-Local fallback: **Mock/direct escrow only when explicitly enabled**
+Local fallback: **Mock payments only when explicitly enabled**
 
 ---
 

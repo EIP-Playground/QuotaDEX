@@ -30,7 +30,7 @@ type EventRow = {
 
 const SUMMARY_SETTLEMENT: DashboardSummaryResponse["settlement"] = {
   primary: "Kite x402 Escrow",
-  fallback: "Mock / Direct Escrow",
+  fallback: "Mock fallback only",
   future: "Mainnet env switch"
 };
 

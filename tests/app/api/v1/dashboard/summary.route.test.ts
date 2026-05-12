@@ -62,7 +62,7 @@ describe("GET /api/v1/dashboard/summary", () => {
       },
       settlement: {
         primary: "Kite x402 Escrow",
-        fallback: "Mock / Direct Escrow",
+        fallback: "Mock fallback only",
         future: "Mainnet env switch"
       },
       updatedAt: "2026-04-19T08:00:00.000Z"

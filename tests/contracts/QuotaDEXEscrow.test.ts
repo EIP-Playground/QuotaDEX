@@ -10,6 +10,7 @@ import {
   createWalletClient,
   getAddress,
   http,
+  parseEther,
   type Abi,
   type Address,
   type Hex
@@ -76,6 +77,19 @@ contract MockERC20 {
 }
 `;
 
+const forceNativeSource = `
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract ForceNative {
+    constructor() payable {}
+
+    function force(address payable target) external {
+        selfdestruct(target);
+    }
+}
+`;
+
 function compileContracts() {
   const escrowSource = fs.readFileSync(
     path.join(process.cwd(), "contracts/QuotaDEXEscrow.sol"),
@@ -89,6 +103,9 @@ function compileContracts() {
       },
       "MockERC20.sol": {
         content: mockTokenSource
+      },
+      "ForceNative.sol": {
+        content: forceNativeSource
       }
     },
     settings: {
@@ -114,7 +131,8 @@ function compileContracts() {
 
   return {
     escrow: output.contracts["QuotaDEXEscrow.sol"].QuotaDEXEscrow,
-    token: output.contracts["MockERC20.sol"].MockERC20
+    token: output.contracts["MockERC20.sol"].MockERC20,
+    forceNative: output.contracts["ForceNative.sol"].ForceNative
   };
 }
 
@@ -212,6 +230,11 @@ async function deployFixture() {
     chain,
     transport
   });
+  const sellerWallet = createWalletClient({
+    account: seller,
+    chain,
+    transport
+  });
 
   const tokenHash = await gatewayWallet.deployContract({
     abi: compiled.token.abi,
@@ -221,6 +244,16 @@ async function deployFixture() {
     hash: tokenHash
   });
   const tokenAddress = getAddress(tokenReceipt.contractAddress as Address);
+  const unsupportedTokenHash = await gatewayWallet.deployContract({
+    abi: compiled.token.abi,
+    bytecode: `0x${compiled.token.evm.bytecode.object}` as Hex
+  });
+  const unsupportedTokenReceipt = await publicClient.waitForTransactionReceipt({
+    hash: unsupportedTokenHash
+  });
+  const unsupportedTokenAddress = getAddress(
+    unsupportedTokenReceipt.contractAddress as Address
+  );
   const escrowHash = await gatewayWallet.deployContract({
     abi: compiled.escrow.abi,
     bytecode: `0x${compiled.escrow.evm.bytecode.object}` as Hex,
@@ -237,10 +270,14 @@ async function deployFixture() {
     publicClient,
     gatewayWallet,
     buyerWallet,
+    sellerWallet,
     buyer,
     seller,
     anvil,
     tokenAddress,
+    unsupportedTokenAddress,
+    forceNativeAbi: compiled.forceNative.abi,
+    forceNativeBytecode: `0x${compiled.forceNative.evm.bytecode.object}` as Hex,
     escrowAddress
   };
 }
@@ -258,6 +295,16 @@ describe("QuotaDEXEscrow", () => {
   afterEach(() => {
     currentAnvil?.kill();
     currentAnvil = null;
+  });
+
+  it("does not expose direct buyer deposit in the production ABI", async () => {
+    const fixture = await deployFixture();
+    currentAnvil = fixture.anvil.process;
+    const functionNames = fixture.abi
+      .filter((entry) => entry.type === "function")
+      .map((entry) => entry.name);
+
+    expect(functionNames).not.toContain("deposit");
   });
 
   it("registers facilitator-settled funds, then releases them to the seller", async () => {
@@ -429,6 +476,222 @@ describe("QuotaDEXEscrow", () => {
         abi: fixture.tokenAbi,
         functionName: "balanceOf",
         args: [fixture.buyer.address]
+      })
+    ).toBe(amount);
+  });
+
+  it("restricts gateway-only accounting and recovery actions", async () => {
+    const fixture = await deployFixture();
+    currentAnvil = fixture.anvil.process;
+
+    await expect(
+      fixture.buyerWallet.writeContract({
+        address: fixture.escrowAddress,
+        abi: fixture.abi,
+        functionName: "registerFacilitatorPayment",
+        args: [
+          paymentId,
+          fixture.buyer.address,
+          fixture.seller.address,
+          amount,
+          settlementTxHash
+        ]
+      })
+    ).rejects.toThrow();
+    await expect(
+      fixture.buyerWallet.writeContract({
+        address: fixture.escrowAddress,
+        abi: fixture.abi,
+        functionName: "release",
+        args: [paymentId]
+      })
+    ).rejects.toThrow();
+    await expect(
+      fixture.buyerWallet.writeContract({
+        address: fixture.escrowAddress,
+        abi: fixture.abi,
+        functionName: "refund",
+        args: [paymentId]
+      })
+    ).rejects.toThrow();
+    await expect(
+      fixture.buyerWallet.writeContract({
+        address: fixture.escrowAddress,
+        abi: fixture.abi,
+        functionName: "sweepNative",
+        args: [fixture.buyer.address, BigInt(1)]
+      })
+    ).rejects.toThrow();
+    await expect(
+      fixture.buyerWallet.writeContract({
+        address: fixture.escrowAddress,
+        abi: fixture.abi,
+        functionName: "recoverUnsupportedToken",
+        args: [fixture.unsupportedTokenAddress, fixture.buyer.address, BigInt(1)]
+      })
+    ).rejects.toThrow();
+    await expect(
+      fixture.buyerWallet.writeContract({
+        address: fixture.escrowAddress,
+        abi: fixture.abi,
+        functionName: "recoverExcessPaymentToken",
+        args: [fixture.buyer.address, BigInt(1)]
+      })
+    ).rejects.toThrow();
+  });
+
+  it("rejects normal native token transfers but lets the gateway sweep forced native balance", async () => {
+    const fixture = await deployFixture();
+    currentAnvil = fixture.anvil.process;
+
+    await expect(
+      fixture.buyerWallet.sendTransaction({
+        to: fixture.escrowAddress,
+        value: BigInt(1)
+      })
+    ).rejects.toThrow();
+
+    const forcedAmount = parseEther("1");
+    const forceHash = await fixture.gatewayWallet.deployContract({
+      abi: fixture.forceNativeAbi,
+      bytecode: fixture.forceNativeBytecode,
+      value: forcedAmount
+    });
+    const forceReceipt = await fixture.publicClient.waitForTransactionReceipt({
+      hash: forceHash
+    });
+    const forceAddress = getAddress(forceReceipt.contractAddress as Address);
+
+    await fixture.gatewayWallet.writeContract({
+      address: forceAddress,
+      abi: fixture.forceNativeAbi,
+      functionName: "force",
+      args: [fixture.escrowAddress]
+    });
+
+    expect(
+      await fixture.publicClient.getBalance({
+        address: fixture.escrowAddress
+      })
+    ).toBe(forcedAmount);
+
+    const sellerBalanceBefore = await fixture.publicClient.getBalance({
+      address: fixture.seller.address
+    });
+    await fixture.gatewayWallet.writeContract({
+      address: fixture.escrowAddress,
+      abi: fixture.abi,
+      functionName: "sweepNative",
+      args: [fixture.seller.address, forcedAmount]
+    });
+
+    expect(
+      await fixture.publicClient.getBalance({
+        address: fixture.escrowAddress
+      })
+    ).toBe(BigInt(0));
+    expect(
+      await fixture.publicClient.getBalance({
+        address: fixture.seller.address
+      })
+    ).toBe(sellerBalanceBefore + forcedAmount);
+  });
+
+  it("recovers unsupported tokens but never the escrow payment token", async () => {
+    const fixture = await deployFixture();
+    currentAnvil = fixture.anvil.process;
+
+    await fixture.gatewayWallet.writeContract({
+      address: fixture.unsupportedTokenAddress,
+      abi: fixture.tokenAbi,
+      functionName: "mint",
+      args: [fixture.escrowAddress, amount]
+    });
+
+    await fixture.gatewayWallet.writeContract({
+      address: fixture.escrowAddress,
+      abi: fixture.abi,
+      functionName: "recoverUnsupportedToken",
+      args: [fixture.unsupportedTokenAddress, fixture.seller.address, amount]
+    });
+
+    expect(
+      await fixture.publicClient.readContract({
+        address: fixture.unsupportedTokenAddress,
+        abi: fixture.tokenAbi,
+        functionName: "balanceOf",
+        args: [fixture.seller.address]
+      })
+    ).toBe(amount);
+
+    await fixture.gatewayWallet.writeContract({
+      address: fixture.tokenAddress,
+      abi: fixture.tokenAbi,
+      functionName: "mint",
+      args: [fixture.escrowAddress, amount]
+    });
+    await expect(
+      fixture.gatewayWallet.writeContract({
+        address: fixture.escrowAddress,
+        abi: fixture.abi,
+        functionName: "recoverUnsupportedToken",
+        args: [fixture.tokenAddress, fixture.seller.address, amount]
+      })
+    ).rejects.toThrow();
+  });
+
+  it("recovers only payment token balance above active liabilities", async () => {
+    const fixture = await deployFixture();
+    currentAnvil = fixture.anvil.process;
+    const excessAmount = amount / BigInt(2);
+
+    await fixture.gatewayWallet.writeContract({
+      address: fixture.tokenAddress,
+      abi: fixture.tokenAbi,
+      functionName: "mint",
+      args: [fixture.buyer.address, amount + excessAmount]
+    });
+    await fixture.buyerWallet.writeContract({
+      address: fixture.tokenAddress,
+      abi: fixture.tokenAbi,
+      functionName: "transfer",
+      args: [fixture.escrowAddress, amount + excessAmount]
+    });
+    await fixture.gatewayWallet.writeContract({
+      address: fixture.escrowAddress,
+      abi: fixture.abi,
+      functionName: "registerFacilitatorPayment",
+      args: [
+        paymentId,
+        fixture.buyer.address,
+        fixture.seller.address,
+        amount,
+        settlementTxHash
+      ]
+    });
+
+    await expect(
+      fixture.gatewayWallet.writeContract({
+        address: fixture.escrowAddress,
+        abi: fixture.abi,
+        functionName: "recoverExcessPaymentToken",
+        args: [fixture.gatewayWallet.account.address, excessAmount + BigInt(1)]
+      })
+    ).rejects.toThrow();
+
+    await fixture.gatewayWallet.writeContract({
+      address: fixture.escrowAddress,
+      abi: fixture.abi,
+      functionName: "recoverExcessPaymentToken",
+      args: [fixture.gatewayWallet.account.address, excessAmount]
+    });
+
+    expect(
+      await fixture.publicClient.readContract({
+        address: fixture.tokenAddress,
+        abi: fixture.tokenAbi,
+        functionName: "balanceOf",
+        args: [fixture.escrowAddress]
       })
     ).toBe(amount);
   });

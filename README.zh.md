@@ -123,7 +123,7 @@ lib/
 supabase/
   migrations/         # sellers, jobs, events 表结构
 contracts/
-  QuotaDEXEscrow.sol  # Solidity 合约：x402 register, deposit, release, refund
+  QuotaDEXEscrow.sol  # Solidity 合约：x402 register, release, refund
 scripts/
   seller-worker.mjs   # 本地 Seller 演示（注册→监听→完成）
   buyer-demo.mjs      # 本地 Buyer 演示（报价→存款→验证→等待结果）
@@ -201,11 +201,15 @@ PAYMENT_TOKEN_DECIMALS=18
 PAYMENT_CURRENCY=USDT
 ALLOW_MOCK_PAYMENTS=false
 
-# Legacy local buyer demo only
+# 一键 Kite Testnet Demo。这些钱包只花费和接收测试网 USDT。
 BUYER_PRIVATE_KEY=
+DEMO_SELLER_PRIVATE_KEY=
+DEMO_PRICE_PER_TASK=0.001
+DEMO_RATE_LIMIT=3
 ```
 
 > `GATEWAY_PRIVATE_KEY` 是 Gateway 控制的普通钱包私钥，不是合约地址的私钥。合约没有私钥。
+> 公开 `/demo` 页面只会在服务端使用 `BUYER_PRIVATE_KEY` 和 `DEMO_SELLER_PRIVATE_KEY`，不要把它们暴露给浏览器。
 
 ---
 
@@ -263,7 +267,7 @@ cat skills/quotadex-seller/SKILL.md
 | Buyer/Seller Passport Skills                        | 已完成        |
 
 当前主要支付路线：**Kite x402 → QuotaDEXEscrow → Seller/Buyer**
-本地降级方案：**只有显式开启时才允许 Mock/direct escrow**
+本地降级方案：**只有显式开启时才允许 Mock payment**
 
 ---
 

@@ -11,7 +11,7 @@ export type DashboardSummaryResponse = {
   sellerStatus: Record<SellerStatus, number>;
   settlement: {
     primary: "Kite x402 Escrow";
-    fallback: "Mock / Direct Escrow";
+    fallback: "Mock fallback only";
     future: "Mainnet env switch";
   };
   updatedAt: string | null;

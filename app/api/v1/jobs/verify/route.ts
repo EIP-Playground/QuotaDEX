@@ -15,15 +15,15 @@ import {
   EscrowGatewayActionError,
   executeEscrowGatewayAction,
   InvalidEscrowReceiptError,
-  looksLikeOnChainTxHash,
+  recoverExcessEscrowPaymentToken,
   registerFacilitatorEscrowPayment,
-  verifyFacilitatorSettlementReceipt,
-  verifyEscrowDepositReceipt
+  verifyFacilitatorSettlementReceipt
 } from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
 import { buildFingerprint } from "@/lib/fingerprint";
 import {
   createSettlingJob,
+  deleteJob,
   deleteQuoteContext,
   DuplicateVerificationError,
   finalizeSettlingJobPayment,
@@ -44,6 +44,11 @@ class PaymentVerificationInputError extends Error {
     this.name = "PaymentVerificationInputError";
   }
 }
+
+type PaymentVerificationProgress = {
+  settlementTxHash: string | null;
+  escrowRegistered: boolean;
+};
 
 function summarizeFacilitatorPayload(xPaymentHeader: string) {
   try {
@@ -72,8 +77,9 @@ async function verifyPaymentForRequest(params: {
   quoteContext: NonNullable<Awaited<ReturnType<typeof loadQuoteContext>>>;
   verifyRequest: ReturnType<typeof parseVerifyRequestBody>;
   env: ReturnType<typeof getServerEnv>;
+  progress?: PaymentVerificationProgress;
 }): Promise<{
-  mode: "mock" | "escrow-chain" | "x402-escrow";
+  mode: "mock" | "x402-escrow";
   resolvedTxHash: string | null;
   settlementTxHash?: string | null;
   escrowRegistrationTxHash?: string | null;
@@ -147,6 +153,9 @@ async function verifyPaymentForRequest(params: {
         settleResponse
       );
     }
+    if (params.progress) {
+      params.progress.settlementTxHash = settlementTxHash;
+    }
 
     await verifyFacilitatorSettlementReceipt({
       txHash: settlementTxHash,
@@ -168,6 +177,9 @@ async function verifyPaymentForRequest(params: {
       escrowAddress: params.quoteContext.pay_to,
       gatewayPrivateKey: params.env.GATEWAY_PRIVATE_KEY
     });
+    if (params.progress) {
+      params.progress.escrowRegistered = true;
+    }
 
     return {
       mode: "x402-escrow",
@@ -191,31 +203,6 @@ async function verifyPaymentForRequest(params: {
       "tx_hash is required when X-PAYMENT is not provided.",
       "INVALID_TX_HASH"
     );
-  }
-
-  if (looksLikeOnChainTxHash(params.txHash)) {
-    console.info("Verify payment route selected", {
-      mode: "escrow-chain",
-      paymentId: params.quoteContext.payment_id,
-      sellerId: params.quoteContext.seller_id,
-      buyerId: params.verifyRequest.payload.buyer_id,
-      txHash: params.txHash
-    });
-
-    await verifyEscrowDepositReceipt({
-      txHash: params.txHash,
-      paymentId: params.quoteContext.payment_id,
-      buyerId: params.verifyRequest.payload.buyer_id,
-      sellerId: params.quoteContext.seller_id,
-      amount: params.quoteContext.amount,
-      rpcUrl: params.env.KITE_RPC_URL,
-      escrowAddress: params.env.ESCROW_CONTRACT_ADDRESS,
-      pyusdDecimals: Number.parseInt(params.env.PAYMENT_TOKEN_DECIMALS, 10)
-    });
-    return {
-      mode: "escrow-chain",
-      resolvedTxHash: params.txHash
-    };
   }
 
   console.info("Verify payment route selected", {
@@ -391,6 +378,84 @@ export async function POST(request: Request) {
   }
 
   let verifiedPayment: Awaited<ReturnType<typeof verifyPaymentForRequest>>;
+  const activeQuoteContext = quoteContext;
+  const verificationProgress: PaymentVerificationProgress = {
+    settlementTxHash: null,
+    escrowRegistered: false
+  };
+
+  async function cleanupFailedPaymentVerification(reason: string) {
+    if (verificationProgress.settlementTxHash && !verificationProgress.escrowRegistered) {
+      try {
+        const recovery = await recoverExcessEscrowPaymentToken({
+          recipientAddress: activeQuoteContext.buyer_id,
+          amountAtomic: activeQuoteContext.amount_atomic,
+          rpcUrl: env.KITE_RPC_URL,
+          escrowAddress: activeQuoteContext.pay_to,
+          gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+        });
+
+        console.error("Recovered unregistered escrow payment after verify failure", {
+          paymentId: activeQuoteContext.payment_id,
+          jobId: settlingJob.id,
+          settlementTxHash: verificationProgress.settlementTxHash,
+          recoveryTxHash: recovery.txHash,
+          reason
+        });
+      } catch (recoveryError) {
+        console.error("Failed to recover unregistered escrow payment after verify failure", {
+          paymentId: activeQuoteContext.payment_id,
+          jobId: settlingJob.id,
+          settlementTxHash: verificationProgress.settlementTxHash,
+          reason,
+          recoveryReason:
+            recoveryError instanceof Error
+              ? recoveryError.message
+              : "Unknown escrow recovery error."
+        });
+      }
+    }
+
+    try {
+      await deleteJob(settlingJob.id);
+    } catch (deleteError) {
+      console.error("Failed to delete settling job after payment verification failure", {
+        paymentId: activeQuoteContext.payment_id,
+        jobId: settlingJob.id,
+        reason:
+          deleteError instanceof Error
+            ? deleteError.message
+            : "Unknown settling job delete error."
+      });
+    }
+
+    try {
+      await setSellerIdleAfterExecution(activeQuoteContext.seller_id);
+    } catch (releaseError) {
+      console.error("Failed to release seller after payment verification failure", {
+        paymentId: activeQuoteContext.payment_id,
+        jobId: settlingJob.id,
+        sellerId: activeQuoteContext.seller_id,
+        reason:
+          releaseError instanceof Error
+            ? releaseError.message
+            : "Unknown seller release error."
+      });
+    }
+
+    try {
+      await deleteQuoteContext(activeQuoteContext.payment_id);
+    } catch (quoteContextDeleteError) {
+      console.error("Failed to delete quote context after payment verification failure", {
+        paymentId: activeQuoteContext.payment_id,
+        jobId: settlingJob.id,
+        reason:
+          quoteContextDeleteError instanceof Error
+            ? quoteContextDeleteError.message
+            : "Unknown quote context delete error."
+      });
+    }
+  }
 
   try {
     verifiedPayment = await verifyPaymentForRequest({
@@ -398,9 +463,14 @@ export async function POST(request: Request) {
       xPaymentHeader,
       quoteContext,
       verifyRequest,
-      env
+      env,
+      progress: verificationProgress
     });
   } catch (error) {
+    await cleanupFailedPaymentVerification(
+      error instanceof Error ? error.message : "Unknown payment verification error."
+    );
+
     if (error instanceof FacilitatorRequestError) {
       console.warn("Facilitator payment verification failed", {
         paymentId: quoteContext.payment_id,

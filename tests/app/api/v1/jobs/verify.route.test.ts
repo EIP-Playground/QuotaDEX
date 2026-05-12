@@ -1,6 +1,7 @@
 import { buildFingerprint } from "@/lib/fingerprint";
 import {
   executeEscrowGatewayAction,
+  recoverExcessEscrowPaymentToken,
   registerFacilitatorEscrowPayment,
   verifyFacilitatorSettlementReceipt
 } from "@/lib/chain/escrow";
@@ -10,6 +11,7 @@ import {
 } from "@/lib/chain/facilitator";
 import {
   createSettlingJob,
+  deleteJob,
   deleteQuoteContext,
   finalizeSettlingJobPayment,
   loadQuoteContext,
@@ -45,6 +47,7 @@ vi.mock("@/lib/chain/escrow", async () => {
   return {
     ...actual,
     executeEscrowGatewayAction: vi.fn(),
+    recoverExcessEscrowPaymentToken: vi.fn(),
     verifyEscrowDepositReceipt: vi.fn(),
     verifyFacilitatorSettlementReceipt: vi.fn(),
     registerFacilitatorEscrowPayment: vi.fn()
@@ -130,6 +133,7 @@ describe("POST /api/v1/jobs/verify", () => {
     vi.mocked(markSellerBusyForPayment).mockResolvedValue(true);
     vi.mocked(setSellerIdleAfterExecution).mockResolvedValue(true);
     vi.mocked(deleteQuoteContext).mockResolvedValue(undefined);
+    vi.mocked(deleteJob).mockResolvedValue(undefined);
     vi.mocked(createSettlingJob).mockResolvedValue({
       id: "job-1",
       payment_id: fingerprint,
@@ -139,6 +143,9 @@ describe("POST /api/v1/jobs/verify", () => {
       id: "job-1",
       payment_id: fingerprint,
       status: "paid"
+    });
+    vi.mocked(recoverExcessEscrowPaymentToken).mockResolvedValue({
+      txHash: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
     });
   });
 
@@ -160,6 +167,42 @@ describe("POST /api/v1/jobs/verify", () => {
     expect(markSellerBusyForPayment).not.toHaveBeenCalled();
     expect(createSettlingJob).not.toHaveBeenCalled();
     expect(finalizeSettlingJobPayment).not.toHaveBeenCalled();
+  });
+
+  it("treats long tx_hash values as mock-only when mock payments are explicitly enabled", async () => {
+    process.env.ALLOW_MOCK_PAYMENTS = "true";
+    const longMockTxHash =
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash: longMockTxHash,
+          payload
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      job_id: "job-1",
+      status: "paid",
+      payment_mode: "mock",
+      settlement_tx_hash: null,
+      escrow_registration_tx_hash: null
+    });
+    expect(finalizeSettlingJobPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: expect.objectContaining({
+          mode: "mock"
+        })
+      })
+    );
+    expect(verifyFacilitatorPayment).not.toHaveBeenCalled();
+    expect(registerFacilitatorEscrowPayment).not.toHaveBeenCalled();
   });
 
   it("claims the seller and records a settling intent before facilitator settlement", async () => {
@@ -298,6 +341,103 @@ describe("POST /api/v1/jobs/verify", () => {
     expect(settleFacilitatorPayment).not.toHaveBeenCalled();
     expect(registerFacilitatorEscrowPayment).not.toHaveBeenCalled();
     expect(createSettlingJob).not.toHaveBeenCalled();
+  });
+
+  it("cleans up the settling job, quote, and seller when facilitator verify rejects", async () => {
+    const xPayment = Buffer.from(
+      JSON.stringify({
+        authorization: {
+          from: buyerId,
+          to: quoteContext.pay_to,
+          value: quoteContext.amount_atomic
+        },
+        signature: "0xsig",
+        network: "kite-testnet"
+      })
+    ).toString("base64");
+
+    vi.mocked(verifyFacilitatorPayment).mockResolvedValue({
+      valid: false,
+      error: "bad payment"
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        headers: {
+          "x-payment": xPayment
+        },
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash: null,
+          payload
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("FACILITATOR_RESPONSE_INVALID");
+    expect(deleteJob).toHaveBeenCalledWith("job-1");
+    expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(sellerId);
+    expect(deleteQuoteContext).toHaveBeenCalledWith(fingerprint);
+    expect(finalizeSettlingJobPayment).not.toHaveBeenCalled();
+    expect(recoverExcessEscrowPaymentToken).not.toHaveBeenCalled();
+  });
+
+  it("recovers settled but unregistered escrow funds when registration fails", async () => {
+    const xPayment = Buffer.from(
+      JSON.stringify({
+        authorization: {
+          from: buyerId,
+          to: quoteContext.pay_to,
+          value: quoteContext.amount_atomic
+        },
+        signature: "0xsig",
+        network: "kite-testnet"
+      })
+    ).toString("base64");
+    const settlementTxHash =
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    vi.mocked(verifyFacilitatorPayment).mockResolvedValue({ valid: true });
+    vi.mocked(settleFacilitatorPayment).mockResolvedValue({
+      success: true,
+      txHash: settlementTxHash
+    });
+    vi.mocked(verifyFacilitatorSettlementReceipt).mockResolvedValue(undefined);
+    vi.mocked(registerFacilitatorEscrowPayment).mockRejectedValue(
+      new Error("registration failed")
+    );
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        headers: {
+          "x-payment": xPayment
+        },
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash: null,
+          payload
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.code).toBe("PAYMENT_VERIFY_FAILED");
+    expect(recoverExcessEscrowPaymentToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientAddress: buyerId,
+        amountAtomic: quoteContext.amount_atomic,
+        escrowAddress: quoteContext.pay_to
+      })
+    );
+    expect(deleteJob).toHaveBeenCalledWith("job-1");
+    expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(sellerId);
+    expect(deleteQuoteContext).toHaveBeenCalledWith(fingerprint);
+    expect(finalizeSettlingJobPayment).not.toHaveBeenCalled();
   });
 
   it("attempts escrow refund compensation if local finalization fails after registration", async () => {

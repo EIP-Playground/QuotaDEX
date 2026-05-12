@@ -5,6 +5,8 @@ export type QuoteRequestBody = {
   buyer_id: string;
   capability: string;
   prompt: string;
+  demo_run_id?: string;
+  demo_payment_mode?: "demo-direct-escrow";
 };
 
 export type QuoteContext = {
@@ -72,7 +74,7 @@ export type CreatedSettlingJob = {
   status: "settling";
 };
 
-export type PaymentMode = "mock" | "escrow-chain" | "x402-escrow";
+export type PaymentMode = "mock" | "x402-escrow";
 export type PaymentStatus =
   | "created"
   | "settling"
@@ -157,7 +159,7 @@ function readOptionalString(
 }
 
 function parsePaymentMode(value: string): PaymentMode {
-  if (value === "mock" || value === "escrow-chain" || value === "x402-escrow") {
+  if (value === "mock" || value === "x402-escrow") {
     return value;
   }
 
@@ -441,19 +443,31 @@ function paymentStatusForVerifiedPayment(payment: VerifiedPaymentMetadata): Paym
     return "escrow_registered";
   }
 
-  if (payment.mode === "escrow-chain") {
-    return "escrow_deposited";
-  }
-
   return "mock_verified";
 }
 
 function buildJobPayload(verifyRequest: VerifyRequestBody) {
-  return {
+  const payload: {
+    buyer_id: string;
+    capability: string;
+    prompt: string;
+    demo_run_id?: string;
+    demo_payment_mode?: "demo-direct-escrow";
+  } = {
     buyer_id: verifyRequest.payload.buyer_id,
     capability: verifyRequest.payload.capability,
     prompt: verifyRequest.payload.prompt
   };
+
+  if (verifyRequest.payload.demo_run_id) {
+    payload.demo_run_id = verifyRequest.payload.demo_run_id;
+  }
+
+  if (verifyRequest.payload.demo_payment_mode) {
+    payload.demo_payment_mode = verifyRequest.payload.demo_payment_mode;
+  }
+
+  return payload;
 }
 
 export async function createSettlingJob(
