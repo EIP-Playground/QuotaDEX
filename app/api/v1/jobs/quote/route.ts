@@ -8,6 +8,7 @@ import {
   buildX402AcceptEntry,
   buildX402PaymentRequiredResponse
 } from "@/lib/chain/facilitator";
+import { toOnChainAmount } from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
 import { buildFingerprint } from "@/lib/fingerprint";
 import {
@@ -15,7 +16,7 @@ import {
   buildQuoteContextKey,
   parseQuoteRequestBody,
   QUOTE_CONTEXT_TTL_SECONDS,
-  QUOTE_CURRENCY,
+  QUOTE_PAYMENT_MODE,
   releaseReservedSeller,
   type ReservedSeller,
   reserveSellerForQuote
@@ -80,6 +81,11 @@ export async function POST(request: Request) {
     prompt: quoteRequest.prompt
   }, env.GATEWAY_SALT);
   const paymentId = fingerprint;
+  const tokenDecimals = Number.parseInt(env.PAYMENT_TOKEN_DECIMALS, 10);
+  const amountAtomic = toOnChainAmount(
+    reservedSeller.price_per_task,
+    tokenDecimals
+  ).toString();
   const quoteContext = buildQuoteContext({
     payment_id: paymentId,
     fingerprint,
@@ -87,7 +93,13 @@ export async function POST(request: Request) {
     seller_id: reservedSeller.id,
     seller_reserved_at: reservedSeller.reserved_at,
     capability: quoteRequest.capability,
-    amount: reservedSeller.price_per_task
+    amount: reservedSeller.price_per_task,
+    amount_atomic: amountAtomic,
+    currency: env.PAYMENT_CURRENCY,
+    payment_mode: QUOTE_PAYMENT_MODE,
+    payment_asset: env.KITE_PAYMENT_ASSET_ADDRESS,
+    pay_to: env.ESCROW_CONTRACT_ADDRESS,
+    network: env.KITE_NETWORK
   });
 
   try {
@@ -132,11 +144,12 @@ export async function POST(request: Request) {
   const accepts = [
     buildX402AcceptEntry({
       asset: env.KITE_PAYMENT_ASSET_ADDRESS,
-      payTo: env.GATEWAY_MERCHANT_WALLET,
-      maxAmountRequired: reservedSeller.price_per_task,
-      resource: "/api/v1/jobs/verify",
+      payTo: env.ESCROW_CONTRACT_ADDRESS,
+      maxAmountRequired: amountAtomic,
+      resource: new URL("/api/v1/jobs/verify", env.GATEWAY_PUBLIC_BASE_URL).toString(),
       description: `QuotaDEX ${quoteRequest.capability} execution request`,
       merchantName: "QuotaDEX Gateway",
+      network: env.KITE_NETWORK,
       outputSchema: {
         type: "object",
         properties: {
@@ -147,8 +160,12 @@ export async function POST(request: Request) {
       },
       extra: {
         payment_id: paymentId,
+        payment_mode: QUOTE_PAYMENT_MODE,
         seller_id: reservedSeller.id,
-        currency: QUOTE_CURRENCY
+        escrow_contract: env.ESCROW_CONTRACT_ADDRESS,
+        currency: env.PAYMENT_CURRENCY,
+        amount_atomic: amountAtomic,
+        chain_id: env.KITE_CHAIN_ID
       }
     })
   ];
@@ -163,9 +180,14 @@ export async function POST(request: Request) {
       code: "PAYMENT_REQUIRED",
       payment_id: paymentId,
       fingerprint,
+      payment_mode: QUOTE_PAYMENT_MODE,
       pay_to: env.ESCROW_CONTRACT_ADDRESS,
       amount: reservedSeller.price_per_task,
-      currency: QUOTE_CURRENCY,
+      amount_atomic: amountAtomic,
+      currency: env.PAYMENT_CURRENCY,
+      network: env.KITE_NETWORK,
+      chain_id: env.KITE_CHAIN_ID,
+      payment_asset: env.KITE_PAYMENT_ASSET_ADDRESS,
       seller_id: reservedSeller.id,
       expires_in_seconds: QUOTE_CONTEXT_TTL_SECONDS,
       accepts: x402Payload.accepts,

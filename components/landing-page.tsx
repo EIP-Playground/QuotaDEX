@@ -35,7 +35,7 @@ const FEATURES: Feature[] = [
   {
     Icon: TbBolt,
     title: "Idle Compute to Revenue",
-    desc: "Register as a seller, keep your LLM online, and earn PYUSD every time an agent buys your quota."
+    desc: "Register as a seller, keep your LLM online, and earn Test USDT every time an agent buys your quota."
   },
   {
     Icon: TbNetwork,
@@ -81,12 +81,12 @@ const TIMELINE: TimelineStory[] = [
       <>
         <p>
           Every job is backed by a <strong>custom Escrow contract on Kite</strong>. Buyers{" "}
-          <code>deposit</code> on quote, Gateway calls <code>release</code> on completion,{" "}
-          <code>refund</code> fires automatically on failure.
+          approve x402 payment to escrow, Gateway calls <code>release</code> on completion,{" "}
+          and <code>refund</code> fires automatically on failure.
         </p>
         <p>
-          Payments flow in PYUSD with explorer-verifiable proof. Mock fallback keeps demos stable
-          when chains are busy.
+          Payments flow in Test USDT with explorer-verifiable proof. Mock fallback is only for
+          local demos.
         </p>
       </>
     )

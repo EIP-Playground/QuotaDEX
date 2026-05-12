@@ -33,6 +33,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "jsdom": "^26.1.0",
+    "solc": "^0.8.35",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

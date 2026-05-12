@@ -3,10 +3,14 @@ type RegisterSellerBody = {
   capability: string;
   price_per_task: string;
   wallet?: string;
+  passport_agent_id?: string;
+  passport_payer_addr?: string;
 };
 
 type SellerIdentityBody = {
   seller_id: string;
+  passport_agent_id?: string;
+  passport_payer_addr?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -38,6 +42,16 @@ export function parseRegisterSellerBody(input: unknown): RegisterSellerBody {
     typeof input.wallet === "string" && input.wallet.trim() !== ""
       ? input.wallet.trim()
       : undefined;
+  const passportAgentId =
+    typeof input.passport_agent_id === "string" &&
+    input.passport_agent_id.trim() !== ""
+      ? input.passport_agent_id.trim()
+      : undefined;
+  const passportPayerAddr =
+    typeof input.passport_payer_addr === "string" &&
+    input.passport_payer_addr.trim() !== ""
+      ? input.passport_payer_addr.trim()
+      : undefined;
 
   const normalizedPrice =
     typeof rawPrice === "number"
@@ -48,19 +62,25 @@ export function parseRegisterSellerBody(input: unknown): RegisterSellerBody {
 
   const numericPrice = Number(normalizedPrice);
 
-  if (normalizedPrice === "" || Number.isNaN(numericPrice) || numericPrice < 0) {
-    throw new Error("price_per_task must be a non-negative number.");
+  if (normalizedPrice === "" || Number.isNaN(numericPrice) || numericPrice <= 0) {
+    throw new Error("price_per_task must be a positive number.");
   }
 
   if (wallet && wallet !== sellerId) {
-    throw new Error("wallet must match seller_id in the MVP seller model.");
+    throw new Error("wallet must match seller_id.");
+  }
+
+  if (passportPayerAddr && passportPayerAddr !== sellerId) {
+    throw new Error("passport_payer_addr must match seller_id.");
   }
 
   return {
     seller_id: sellerId,
     capability,
     price_per_task: normalizedPrice,
-    wallet
+    wallet,
+    passport_agent_id: passportAgentId,
+    passport_payer_addr: passportPayerAddr
   };
 }
 
@@ -69,7 +89,25 @@ export function parseSellerIdentityBody(input: unknown): SellerIdentityBody {
     throw new Error("Request body must be a JSON object.");
   }
 
+  const sellerId = readRequiredString(input, "seller_id");
+  const passportAgentId =
+    typeof input.passport_agent_id === "string" &&
+    input.passport_agent_id.trim() !== ""
+      ? input.passport_agent_id.trim()
+      : undefined;
+  const passportPayerAddr =
+    typeof input.passport_payer_addr === "string" &&
+    input.passport_payer_addr.trim() !== ""
+      ? input.passport_payer_addr.trim()
+      : undefined;
+
+  if (passportPayerAddr && passportPayerAddr !== sellerId) {
+    throw new Error("passport_payer_addr must match seller_id.");
+  }
+
   return {
-    seller_id: readRequiredString(input, "seller_id")
+    seller_id: sellerId,
+    passport_agent_id: passportAgentId,
+    passport_payer_addr: passportPayerAddr
   };
 }

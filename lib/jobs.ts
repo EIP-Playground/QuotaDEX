@@ -15,7 +15,12 @@ export type QuoteContext = {
   seller_reserved_at: string;
   capability: string;
   amount: string;
-  currency: "PYUSD";
+  amount_atomic: string;
+  currency: string;
+  payment_mode: PaymentMode;
+  payment_asset: string;
+  pay_to: string;
+  network: string;
   created_at: string;
   expires_at: string;
 };
@@ -28,6 +33,8 @@ export type VerifyRequestBody = {
 
 export type StartJobBody = {
   seller_id: string;
+  seller_signature?: string;
+  seller_signed_at?: string;
 };
 
 export type CompleteJobBody = StartJobBody & {
@@ -59,12 +66,41 @@ export type CreatedPaidJob = {
   status: "paid";
 };
 
+export type CreatedSettlingJob = {
+  id: string;
+  payment_id: string;
+  status: "settling";
+};
+
+export type PaymentMode = "mock" | "escrow-chain" | "x402-escrow";
+export type PaymentStatus =
+  | "created"
+  | "settling"
+  | "mock_verified"
+  | "escrow_deposited"
+  | "escrow_registered"
+  | "released"
+  | "refunded";
+
+export type VerifiedPaymentMetadata = {
+  mode: PaymentMode;
+  settlementTxHash?: string | null;
+  escrowRegistrationTxHash?: string | null;
+  buyerWalletAddress?: string | null;
+  sellerWalletAddress?: string | null;
+  escrowContractAddress?: string | null;
+};
+
 export type JobSnapshot = {
   id: string;
   seller_id: string;
-  status: "paid" | "running" | "done" | "failed";
+  status: "settling" | "paid" | "running" | "done" | "failed";
   payment_id: string;
   tx_hash: string | null;
+  payment_mode: PaymentMode;
+  escrow_contract_address: string | null;
+  settlement_tx_hash: string | null;
+  escrow_registration_tx_hash: string | null;
   payload: Record<string, unknown>;
   result: unknown;
 };
@@ -90,7 +126,7 @@ const SELLER_CANDIDATE_BATCH_SIZE = 20;
 export const RESERVED_SELLER_TIMEOUT_SECONDS = 30;
 export const QUOTE_CONTEXT_TTL_SECONDS = 300;
 export const QUOTE_CONTEXT_KEY_PREFIX = "quote";
-export const QUOTE_CURRENCY = "PYUSD";
+export const QUOTE_PAYMENT_MODE = "x402-escrow";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -107,6 +143,25 @@ function readRequiredString(
   }
 
   return value.trim();
+}
+
+function readOptionalString(
+  input: Record<string, unknown>,
+  key: string
+): string | undefined {
+  const value = input[key];
+
+  return typeof value === "string" && value.trim() !== ""
+    ? value.trim()
+    : undefined;
+}
+
+function parsePaymentMode(value: string): PaymentMode {
+  if (value === "mock" || value === "escrow-chain" || value === "x402-escrow") {
+    return value;
+  }
+
+  throw new Error(`Unsupported payment_mode: ${value}.`);
 }
 
 function normalizePrice(value: string | number): string {
@@ -201,14 +256,13 @@ export function buildQuoteContextKey(paymentId: string): string {
 }
 
 export function buildQuoteContext(
-  input: Omit<QuoteContext, "created_at" | "expires_at" | "currency">
+  input: Omit<QuoteContext, "created_at" | "expires_at">
 ): QuoteContext {
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + QUOTE_CONTEXT_TTL_SECONDS * 1000);
 
   return {
     ...input,
-    currency: QUOTE_CURRENCY,
     created_at: createdAt.toISOString(),
     expires_at: expiresAt.toISOString()
   };
@@ -254,7 +308,9 @@ export function parseStartJobBody(input: unknown): StartJobBody {
   }
 
   return {
-    seller_id: readRequiredString(input, "seller_id")
+    seller_id: readRequiredString(input, "seller_id"),
+    seller_signature: readOptionalString(input, "seller_signature"),
+    seller_signed_at: readOptionalString(input, "seller_signed_at")
   };
 }
 
@@ -269,6 +325,8 @@ export function parseCompleteJobBody(input: unknown): CompleteJobBody {
 
   return {
     seller_id: readRequiredString(input, "seller_id"),
+    seller_signature: readOptionalString(input, "seller_signature"),
+    seller_signed_at: readOptionalString(input, "seller_signed_at"),
     result: input.result
   };
 }
@@ -280,6 +338,8 @@ export function parseFailJobBody(input: unknown): FailJobBody {
 
   return {
     seller_id: readRequiredString(input, "seller_id"),
+    seller_signature: readOptionalString(input, "seller_signature"),
+    seller_signed_at: readOptionalString(input, "seller_signed_at"),
     error: readRequiredString(input, "error")
   };
 }
@@ -294,12 +354,6 @@ export function parseQuoteContextValue(input: unknown): QuoteContext {
     throw new Error("Quote context must be a JSON object.");
   }
 
-  const currency = readRequiredString(value, "currency");
-
-  if (currency !== QUOTE_CURRENCY) {
-    throw new Error(`Quote context currency must be ${QUOTE_CURRENCY}.`);
-  }
-
   return {
     payment_id: readRequiredString(value, "payment_id"),
     fingerprint: readRequiredString(value, "fingerprint"),
@@ -308,7 +362,12 @@ export function parseQuoteContextValue(input: unknown): QuoteContext {
     seller_reserved_at: readRequiredString(value, "seller_reserved_at"),
     capability: readRequiredString(value, "capability"),
     amount: readRequiredString(value, "amount"),
-    currency: QUOTE_CURRENCY,
+    amount_atomic: readRequiredString(value, "amount_atomic"),
+    currency: readRequiredString(value, "currency"),
+    payment_mode: parsePaymentMode(readRequiredString(value, "payment_mode")),
+    payment_asset: readRequiredString(value, "payment_asset"),
+    pay_to: readRequiredString(value, "pay_to"),
+    network: readRequiredString(value, "network"),
     created_at: readRequiredString(value, "created_at"),
     expires_at: readRequiredString(value, "expires_at")
   };
@@ -377,13 +436,32 @@ export function verifyMockTxHash(txHash: string): void {
   }
 }
 
-export async function createPaidJob(
+function paymentStatusForVerifiedPayment(payment: VerifiedPaymentMetadata): PaymentStatus {
+  if (payment.mode === "x402-escrow") {
+    return "escrow_registered";
+  }
+
+  if (payment.mode === "escrow-chain") {
+    return "escrow_deposited";
+  }
+
+  return "mock_verified";
+}
+
+function buildJobPayload(verifyRequest: VerifyRequestBody) {
+  return {
+    buyer_id: verifyRequest.payload.buyer_id,
+    capability: verifyRequest.payload.capability,
+    prompt: verifyRequest.payload.prompt
+  };
+}
+
+export async function createSettlingJob(
   params: {
     verifyRequest: VerifyRequestBody;
     quoteContext: QuoteContext;
-    txHash: string | null;
   }
-): Promise<CreatedPaidJob> {
+): Promise<CreatedSettlingJob> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("jobs")
@@ -391,12 +469,126 @@ export async function createPaidJob(
       payment_id: params.quoteContext.payment_id,
       buyer_id: params.quoteContext.buyer_id,
       seller_id: params.quoteContext.seller_id,
+      tx_hash: null,
+      payment_mode: params.quoteContext.payment_mode,
+      payment_status: "settling",
+      amount: params.quoteContext.amount,
+      amount_atomic: params.quoteContext.amount_atomic,
+      currency: params.quoteContext.currency,
+      payment_asset: params.quoteContext.payment_asset,
+      buyer_wallet_address: params.quoteContext.buyer_id,
+      seller_wallet_address: params.quoteContext.seller_id,
+      escrow_contract_address: params.quoteContext.pay_to,
+      settlement_tx_hash: null,
+      escrow_registration_tx_hash: null,
+      expires_at: params.quoteContext.expires_at,
+      payload: buildJobPayload(params.verifyRequest),
+      status: "settling"
+    })
+    .select("id, payment_id, status")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      const message = error.message.toLowerCase();
+      const reason = message.includes("payment_id") ? "payment_id" : "tx_hash";
+      throw new DuplicateVerificationError(
+        "Payment verification was already processed.",
+        reason
+      );
+    }
+
+    throw new Error(`Failed to create settling job: ${error.message}`);
+  }
+
+  return data as CreatedSettlingJob;
+}
+
+export async function finalizeSettlingJobPayment(
+  params: {
+    jobId: string;
+    verifyRequest: VerifyRequestBody;
+    quoteContext: QuoteContext;
+    txHash: string | null;
+    payment: VerifiedPaymentMetadata;
+  }
+): Promise<CreatedPaidJob | null> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("jobs")
+    .update({
       tx_hash: params.txHash,
-      payload: {
-        buyer_id: params.verifyRequest.payload.buyer_id,
-        capability: params.verifyRequest.payload.capability,
-        prompt: params.verifyRequest.payload.prompt
-      },
+      payment_mode: params.payment.mode,
+      payment_status: paymentStatusForVerifiedPayment(params.payment),
+      buyer_wallet_address:
+        params.payment.buyerWalletAddress ?? params.quoteContext.buyer_id,
+      seller_wallet_address:
+        params.payment.sellerWalletAddress ?? params.quoteContext.seller_id,
+      escrow_contract_address:
+        params.payment.escrowContractAddress ?? params.quoteContext.pay_to,
+      settlement_tx_hash: params.payment.settlementTxHash ?? null,
+      escrow_registration_tx_hash: params.payment.escrowRegistrationTxHash ?? null,
+      payload: buildJobPayload(params.verifyRequest),
+      status: "paid"
+    })
+    .eq("id", params.jobId)
+    .eq("payment_id", params.quoteContext.payment_id)
+    .eq("status", "settling")
+    .select("id, payment_id, status")
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "23505") {
+      const message = error.message.toLowerCase();
+      const reason = message.includes("payment_id") ? "payment_id" : "tx_hash";
+      throw new DuplicateVerificationError(
+        "Payment verification was already processed.",
+        reason
+      );
+    }
+
+    throw new Error(`Failed to finalize settling job: ${error.message}`);
+  }
+
+  return (data as CreatedPaidJob | null) ?? null;
+}
+
+export async function createPaidJob(
+  params: {
+    verifyRequest: VerifyRequestBody;
+    quoteContext: QuoteContext;
+    txHash: string | null;
+    payment?: VerifiedPaymentMetadata;
+  }
+): Promise<CreatedPaidJob> {
+  const supabase = createServerSupabaseClient();
+  const payment = params.payment;
+  const { data, error } = await supabase
+    .from("jobs")
+    .insert({
+      payment_id: params.quoteContext.payment_id,
+      buyer_id: params.quoteContext.buyer_id,
+      seller_id: params.quoteContext.seller_id,
+      tx_hash: params.txHash,
+      payment_mode: payment?.mode ?? "mock",
+      payment_status:
+        payment !== undefined
+          ? paymentStatusForVerifiedPayment(payment)
+          : "mock_verified",
+      amount: params.quoteContext.amount,
+      amount_atomic: params.quoteContext.amount_atomic,
+      currency: params.quoteContext.currency,
+      payment_asset: params.quoteContext.payment_asset,
+      buyer_wallet_address:
+        payment?.buyerWalletAddress ?? params.quoteContext.buyer_id,
+      seller_wallet_address:
+        payment?.sellerWalletAddress ?? params.quoteContext.seller_id,
+      escrow_contract_address:
+        payment?.escrowContractAddress ?? params.quoteContext.pay_to,
+      settlement_tx_hash: payment?.settlementTxHash ?? null,
+      escrow_registration_tx_hash: payment?.escrowRegistrationTxHash ?? null,
+      expires_at: params.quoteContext.expires_at,
+      payload: buildJobPayload(params.verifyRequest),
       status: "paid"
     })
     .select("id, payment_id, status")
@@ -454,7 +646,9 @@ export async function loadJobSnapshot(jobId: string): Promise<JobSnapshot | null
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("jobs")
-    .select("id, seller_id, status, payment_id, tx_hash, payload, result")
+    .select(
+      "id, seller_id, status, payment_id, tx_hash, payment_mode, escrow_contract_address, settlement_tx_hash, escrow_registration_tx_hash, payload, result"
+    )
     .eq("id", jobId)
     .maybeSingle();
 
@@ -520,6 +714,29 @@ export async function setSellerIdleAfterExecution(
   }
 
   return Boolean(data);
+}
+
+export async function recordJobPaymentTransition(params: {
+  jobId: string;
+  paymentStatus: "released" | "refunded";
+  releaseTxHash?: string;
+  refundTxHash?: string;
+}): Promise<void> {
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("jobs")
+    .update({
+      payment_status: params.paymentStatus,
+      release_tx_hash: params.releaseTxHash ?? null,
+      refund_tx_hash: params.refundTxHash ?? null
+    })
+    .eq("id", params.jobId);
+
+  if (error) {
+    throw new Error(
+      `Failed to record payment transition for job ${params.jobId}: ${error.message}`
+    );
+  }
 }
 
 export async function logJobEvent(params: {

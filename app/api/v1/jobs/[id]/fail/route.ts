@@ -12,9 +12,14 @@ import {
 } from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
 import {
+  assertValidSellerCallbackSignature,
+  SellerCallbackSignatureError
+} from "@/lib/seller-callback-auth";
+import {
   loadJobSnapshot,
   logJobEvent,
   parseFailJobBody,
+  recordJobPaymentTransition,
   setSellerIdleAfterExecution,
   updateJobStatusForSeller
 } from "@/lib/jobs";
@@ -87,6 +92,27 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  try {
+    await assertValidSellerCallbackSignature({
+      action: "fail",
+      jobId: id,
+      sellerId: failRequest.seller_id,
+      signature: failRequest.seller_signature,
+      signedAt: failRequest.seller_signed_at,
+      rpcUrl: env.KITE_RPC_URL
+    });
+  } catch (error) {
+    if (error instanceof SellerCallbackSignatureError) {
+      return forbiddenResponse(error.message, error.code);
+    }
+
+    return internalServerErrorResponse(
+      "Failed to verify seller callback signature.",
+      "SELLER_SIGNATURE_CHECK_FAILED",
+      { reason: error instanceof Error ? error.message : "Unknown signature error." }
+    );
+  }
+
   let updatedJob;
 
   try {
@@ -153,7 +179,7 @@ export async function POST(request: Request, context: RouteContext) {
         action: "refund",
         paymentId: jobSnapshot.payment_id,
         rpcUrl: env.KITE_RPC_URL,
-        escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
+        escrowAddress: jobSnapshot.escrow_contract_address ?? env.ESCROW_CONTRACT_ADDRESS,
         gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
       });
 
@@ -161,6 +187,20 @@ export async function POST(request: Request, context: RouteContext) {
         status: "refunded",
         tx_hash: refund.txHash
       };
+
+      try {
+        await recordJobPaymentTransition({
+          jobId: id,
+          paymentStatus: "refunded",
+          refundTxHash: refund.txHash
+        });
+      } catch (error) {
+        console.error("Failed to record escrow refund tx", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: error instanceof Error ? error.message : "Unknown payment record error."
+        });
+      }
 
       try {
         await logJobEvent({

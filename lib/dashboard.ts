@@ -29,9 +29,9 @@ type EventRow = {
 };
 
 const SUMMARY_SETTLEMENT: DashboardSummaryResponse["settlement"] = {
-  primary: "Custom Escrow",
-  fallback: "Mock",
-  future: "Pieverse Facilitator"
+  primary: "Kite x402 Escrow",
+  fallback: "Mock / Direct Escrow",
+  future: "Mainnet env switch"
 };
 
 const SELLER_STATUSES: SellerStatus[] = ["offline", "idle", "reserved", "busy"];

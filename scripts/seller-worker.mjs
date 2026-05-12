@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import { createClient } from "@supabase/supabase-js";
+import { privateKeyToAccount } from "viem/accounts";
 
 const DEFAULT_GATEWAY_BASE_URL = "http://localhost:3000";
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
 const DEFAULT_PENDING_JOB_POLL_INTERVAL_MS = 5_000;
-const DEFAULT_SELLER_ID = "seller-demo";
 const DEFAULT_CAPABILITY = "llama-3";
 const DEFAULT_PRICE_PER_TASK = "0.01";
 
@@ -23,13 +23,21 @@ function getWorkerConfig() {
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
     requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const sellerPrivateKey = requireEnv("SELLER_PRIVATE_KEY");
+  const sellerAccount = privateKeyToAccount(sellerPrivateKey);
+  const sellerId = process.env.SELLER_ID?.trim() || sellerAccount.address;
+
+  if (sellerId.toLowerCase() !== sellerAccount.address.toLowerCase()) {
+    throw new Error("SELLER_ID must match the address derived from SELLER_PRIVATE_KEY.");
+  }
 
   return {
     gatewayBaseUrl:
       process.env.GATEWAY_BASE_URL?.trim() || DEFAULT_GATEWAY_BASE_URL,
     supabaseUrl: requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
     supabaseKey,
-    sellerId: process.env.SELLER_ID?.trim() || DEFAULT_SELLER_ID,
+    sellerId,
+    sellerAccount,
     capability: process.env.SELLER_CAPABILITY?.trim() || DEFAULT_CAPABILITY,
     pricePerTask:
       process.env.SELLER_PRICE_PER_TASK?.trim() || DEFAULT_PRICE_PER_TASK,
@@ -43,6 +51,32 @@ function getWorkerConfig() {
         `${DEFAULT_PENDING_JOB_POLL_INTERVAL_MS}`,
       10
     )
+  };
+}
+
+function buildSellerCallbackMessage({ action, jobId, sellerId, signedAt }) {
+  return [
+    "QuotaDEX Seller Callback",
+    `action: ${action}`,
+    `job_id: ${jobId}`,
+    `seller_id: ${sellerId}`,
+    `signed_at: ${signedAt}`
+  ].join("\n");
+}
+
+async function buildSellerCallbackAuth(config, action, jobId) {
+  const signedAt = new Date().toISOString();
+  const message = buildSellerCallbackMessage({
+    action,
+    jobId,
+    sellerId: config.sellerId,
+    signedAt
+  });
+  const signature = await config.sellerAccount.signMessage({ message });
+
+  return {
+    seller_signature: signature,
+    seller_signed_at: signedAt
   };
 }
 
@@ -136,8 +170,10 @@ async function handleJob(config, activeJobs, job) {
   activeJobs.add(job.id);
 
   try {
+    const startAuth = await buildSellerCallbackAuth(config, "start", job.id);
     await gatewayPost(config.gatewayBaseUrl, `/api/v1/jobs/${job.id}/start`, {
-      seller_id: config.sellerId
+      seller_id: config.sellerId,
+      ...startAuth
     });
 
     const result = await runHandler({
@@ -146,11 +182,13 @@ async function handleJob(config, activeJobs, job) {
       prompt: extractJobPrompt(job)
     });
 
+    const completeAuth = await buildSellerCallbackAuth(config, "complete", job.id);
     await gatewayPost(
       config.gatewayBaseUrl,
       `/api/v1/jobs/${job.id}/complete`,
       {
         seller_id: config.sellerId,
+        ...completeAuth,
         result
       }
     );
@@ -163,8 +201,10 @@ async function handleJob(config, activeJobs, job) {
     console.error(`[worker] job ${job.id} failed`, errorMessage);
 
     try {
+      const failAuth = await buildSellerCallbackAuth(config, "fail", job.id);
       await gatewayPost(config.gatewayBaseUrl, `/api/v1/jobs/${job.id}/fail`, {
         seller_id: config.sellerId,
+        ...failAuth,
         error: errorMessage
       });
     } catch (failError) {
@@ -214,7 +254,8 @@ async function main() {
     seller_id: config.sellerId,
     capability: config.capability,
     price_per_task: config.pricePerTask,
-    wallet: config.sellerId
+    wallet: config.sellerId,
+    passport_payer_addr: config.sellerId
   });
   console.log("[worker] seller registered");
 
