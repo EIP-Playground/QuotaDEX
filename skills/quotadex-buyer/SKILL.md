@@ -1,139 +1,114 @@
 ---
 name: quotadex-buyer
-description: Use when a buyer agent needs to buy compute through QuotaDEX Gateway using Kite Agent Passport and x402 payment.
+description: Use when a buyer agent needs to purchase compute from a QuotaDEX Gateway.
 ---
 
 # QuotaDEX Buyer
 
 ## Overview
 
-Use this skill to request a seller quote, approve x402 payment with Kite Agent Passport, and verify the paid job with QuotaDEX Gateway.
+This skill lets a standalone buyer agent buy one compute task through QuotaDEX using Kite Passport and x402. The agent must receive the Gateway URL from its operator or task context; it must not rely on QuotaDEX deployment environment variables.
 
-## Prerequisites
+## Required inputs from the operator
 
-- The agent knows the QuotaDEX Gateway base URL.
-- The Gateway payment asset is Kite Testnet USDT unless the Gateway response says otherwise.
+Do not assume the Gateway URL, Vercel project, Supabase project, or any deployment environment value. If any required input is missing, ask the operator before continuing.
 
-## Kite Passport Setup
+- QuotaDEX Gateway URL, for example `<gateway_url>`.
+- Buyer Passport email or an already logged-in Passport session.
+- Task `capability`, such as `llama-3`.
+- Task `prompt`.
+- Spending limits for the Passport session: max per transaction, max total, and TTL.
+- Optional Passport backend URL. Use it only if the operator provides it.
 
-If Kite Passport is not installed or `kpass status --output json` shows no logged-in user, set it up before requesting a QuotaDEX quote. Prefer the exact `next_command` returned by `kpass` whenever it is present.
+## Passport setup
 
-Reference: https://agentpassport.ai/quickstart/
+Run all Passport commands with `--output json`. If a command returns `next_command`, execute that exact command.
 
-1. Install and verify the CLI:
+1. Install and inspect Passport:
    ```bash
    curl -fsSL https://agentpassport.ai/install.sh | bash
    kpass --version
-   ```
-2. Sign up a new user:
-   ```bash
-   kpass signup init --email <email> --output json
-   kpass signup poll --signup-id <SIGNUP_ID> --wait --output json
-   kpass signup exchange --signup-id <SIGNUP_ID> --code <CODE> --output json
-   ```
-   The human user must click the email verification link and provide the code. Some Passport versions may return an `exchange_token`; if so, follow the returned `next_command`.
-3. Log in an existing user:
-   ```bash
-   kpass login init --email <email> --output json
-   kpass login verify --login-id <LOGIN_ID> --code <CODE> --output json
-   ```
-4. Register this buyer agent identity once per project:
-   ```bash
-   kpass agent:register --type quotadex-buyer --output json
    kpass status --output json
    ```
-5. Create and activate a spending session for QuotaDEX x402 payments:
+2. If not logged in, sign up or log in:
+   ```bash
+   kpass signup init --email <buyer_email> --output json
+   kpass signup poll --signup-id <signup_id> --wait --output json
+   kpass signup exchange --signup-id <signup_id> --code <email_code> --output json
+   ```
+   Existing users can use:
+   ```bash
+   kpass login init --email <buyer_email> --output json
+   kpass login verify --login-id <login_id> --code <email_code> --output json
+   ```
+3. Register this buyer agent:
+   ```bash
+   kpass agent:register --type quotadex-buyer --output json
+   ```
+4. Create and activate a spending session:
    ```bash
    kpass agent:session create \
-     --task-summary "QuotaDEX compute purchases" \
-     --max-amount-per-tx <amount> \
-     --max-total-amount <amount> \
+     --task-summary "QuotaDEX compute purchase" \
+     --max-amount-per-tx <max_per_tx> \
+     --max-total-amount <max_total> \
      --ttl <duration> \
      --assets USDT \
      --payment-approach x402 \
      --output json
-   kpass agent:session status --request-id <REQUEST_ID> --wait --output json
+   kpass agent:session status --request-id <request_id> --wait --output json
+   kpass agent:session use --session-id <approved_session_id> --output json
    ```
-   Open the returned approval URL, review the policy, and approve with passkey. For Kite testnet/dev Passport, pass `--base-url https://passport.dev.gokite.ai` on each command or set `KITE_PASSPORT_BASE_URL=https://passport.dev.gokite.ai`.
 
-## Workflow
+## Purchase flow
 
-1. Resolve the buyer payer address with Kite Passport:
-   - Call `get_payer_addr`.
-   - If only CLI access is available, inspect `kpass wallet balance --output json` and use `wallet_address`.
-   - Use the returned EVM address as `buyer_id`.
-2. Request a quote:
-   - `POST {GATEWAY_BASE_URL}/api/v1/jobs/quote`
-   - Body: `{ "buyer_id": "<payer_addr>", "capability": "<capability>", "prompt": "<task>" }`
-   - Expect HTTP `402` with `payment_id`, `fingerprint`, `seller_id`, and `accepts`.
-3. Approve the x402 payment:
-   - Pass the selected `accepts[0]` entry to Kite Passport `approve_payment`.
-   - Confirm `payTo` is the escrow contract and `network` is `kite-testnet`.
-   - Confirm `resource` is the absolute Gateway verify URL: `{GATEWAY_BASE_URL}/api/v1/jobs/verify`.
-   - Keep the returned `X-PAYMENT` payload exactly as provided.
-4. Verify the job:
-   - `POST {GATEWAY_BASE_URL}/api/v1/jobs/verify`
-   - Header: `X-PAYMENT: <approval payload>`
-   - Body: `{ "fingerprint": "<fingerprint>", "tx_hash": null, "payload": <original quote body> }`
-   - Expect `job_id`, `payment_mode: "x402-escrow"`, `settlement_tx_hash`, and `escrow_registration_tx_hash`.
-5. Track the job:
-   - Poll `GET {GATEWAY_BASE_URL}/api/v1/jobs/{job_id}` until status is `done` or `failed`.
-   - A completed job returns seller output.
-   - A failed job should trigger escrow refund through the Gateway.
+1. Get the buyer payer address:
+   ```bash
+   kpass wallet balance --output json
+   ```
+   Use the returned wallet address as `buyer_id`.
+2. Request a quote from the operator-provided Gateway URL:
+   ```bash
+   curl -sS -X POST "<gateway_url>/api/v1/jobs/quote" \
+     -H "content-type: application/json" \
+     -d '{
+       "buyer_id":"<buyer_payer_address>",
+       "capability":"<capability>",
+       "prompt":"<prompt>"
+     }'
+   ```
+   Save `fingerprint`, `payment_id`, `seller_id`, and `accepts[0]`.
+3. Validate the quote before paying:
+   - `accepts[0].resource` must equal `<gateway_url>/api/v1/jobs/verify`.
+   - `accepts[0].network` must be `kite-testnet` unless the operator explicitly selected another network.
+   - `accepts[0].payTo` must match the Gateway response `pay_to`.
+   - `accepts[0].asset` must match the Gateway response `payment_asset`.
+4. Pay and verify through Passport. Use the exact quote payload from step 2:
+   ```bash
+   kpass agent:session execute \
+     --url "<gateway_url>/api/v1/jobs/verify" \
+     --method POST \
+     --headers '{"content-type":"application/json"}' \
+     --body '{
+       "fingerprint":"<fingerprint>",
+       "tx_hash":null,
+       "payload":{
+         "buyer_id":"<buyer_payer_address>",
+         "capability":"<capability>",
+         "prompt":"<prompt>"
+       }
+     }' \
+     --output json
+   ```
+   Expect `job_id`, `payment_mode: "x402-escrow"`, `settlement_tx_hash`, and `escrow_registration_tx_hash`.
+5. Poll the job until it reaches `done` or `failed`:
+   ```bash
+   curl -sS "<gateway_url>/api/v1/jobs/<job_id>"
+   ```
 
-## Production Smoke Test cURL
+## Safety rules
 
-Use these commands when validating a real QuotaDEX Gateway deployment. This path requires a Kite Passport-approved `X-PAYMENT` value; do not use mock `tx_hash` in production.
-
-```bash
-export GATEWAY_BASE_URL="https://quota-dex.vercel.app"
-export BUYER_ADDR="<buyer_passport_payer_addr>"
-export CAPABILITY="llama-3"
-export PROMPT="hello quotadex"
-
-curl -sS -o /tmp/quotadex-quote.json -w "HTTP:%{http_code}\n" \
-  -X POST "$GATEWAY_BASE_URL/api/v1/jobs/quote" \
-  -H "content-type: application/json" \
-  -d "{
-    \"buyer_id\":\"$BUYER_ADDR\",
-    \"capability\":\"$CAPABILITY\",
-    \"prompt\":\"$PROMPT\"
-  }"
-
-jq '{code,payment_mode,pay_to,payment_asset,chain_id,amount,accepts}' \
-  /tmp/quotadex-quote.json
-```
-
-Approve `accepts[0]` with Kite Passport. Keep the returned `X-PAYMENT` value exactly as returned by Passport.
-
-```bash
-export X_PAYMENT="<passport_returned_x_payment>"
-export FINGERPRINT="$(jq -r '.fingerprint' /tmp/quotadex-quote.json)"
-
-curl -sS -X POST "$GATEWAY_BASE_URL/api/v1/jobs/verify" \
-  -H "content-type: application/json" \
-  -H "X-PAYMENT: $X_PAYMENT" \
-  -d "{
-    \"fingerprint\":\"$FINGERPRINT\",
-    \"tx_hash\":null,
-    \"payload\":{
-      \"buyer_id\":\"$BUYER_ADDR\",
-      \"capability\":\"$CAPABILITY\",
-      \"prompt\":\"$PROMPT\"
-    }
-  }" | tee /tmp/quotadex-verify.json | jq
-
-export JOB_ID="$(jq -r '.job_id' /tmp/quotadex-verify.json)"
-curl -sS "$GATEWAY_BASE_URL/api/v1/jobs/$JOB_ID" | jq
-```
-
-Expected verification output includes `payment_mode: "x402-escrow"`, a non-null `settlement_tx_hash`, and a non-null `escrow_registration_tx_hash`.
-
-## Safety Rules
-
-- Never send Passport secrets, private keys, or service role keys to QuotaDEX.
-- Never paste Passport JWTs, passkey material, or `.kite-passport/config.json` into Gateway requests.
-- Always use `kpass status --output json` to decide whether signup, login, agent registration, or session activation is still needed.
-- Reject a quote if `accepts[0].payTo` is not the escrow contract from the response.
-- Reject a quote if `accepts[0].asset` does not match the expected Kite payment asset.
-- Treat a missing `X-PAYMENT` header as a failed production payment flow.
+- Never send Passport secrets, private keys, service-role keys, or Supabase keys to QuotaDEX.
+- Never invent a Gateway URL. Ask the operator for it.
+- Never pay if quote validation fails.
+- Never use mock `tx_hash` for a production purchase.
+- Keep the original quote body unchanged when calling `/api/v1/jobs/verify`.

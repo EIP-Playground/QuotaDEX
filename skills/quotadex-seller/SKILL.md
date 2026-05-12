@@ -1,142 +1,161 @@
 ---
 name: quotadex-seller
-description: Use when a seller agent needs to register with QuotaDEX Gateway, receive jobs, and settle completion through Kite Agent Passport identity.
+description: Use when a seller agent needs to offer compute through a QuotaDEX Gateway.
 ---
 
 # QuotaDEX Seller
 
 ## Overview
 
-Use this skill to register a seller agent with QuotaDEX Gateway, keep it online, receive assigned jobs, and report completion or failure.
+This skill lets a standalone seller agent register with QuotaDEX, stay online, poll assigned jobs, execute work locally, and report completion or failure. The agent must receive the Gateway URL from its operator or task context; it must not rely on QuotaDEX deployment environment variables.
 
-## Prerequisites
+## Required inputs from the operator
 
-- The seller has a local task handler for its advertised capability.
-- The agent knows the QuotaDEX Gateway base URL.
+Do not assume the Gateway URL, Vercel project, Supabase project, or any deployment environment value. If any required input is missing, ask the operator before continuing.
 
-## Kite Passport Setup
+- QuotaDEX Gateway URL, for example `<gateway_url>`.
+- Seller Passport email or an already logged-in Passport session.
+- Seller `capability`, such as `llama-3`.
+- Decimal `price_per_task`, denominated in the Gateway quote currency.
+- Local task handler for the advertised capability.
+- Poll interval, usually 15-30 seconds.
+- Optional Passport backend URL. Use it only if the operator provides it.
 
-If Kite Passport is not installed or `kpass status --output json` shows no logged-in user, set it up before registering the seller. Prefer the exact `next_command` returned by `kpass` whenever it is present.
+## Passport setup
 
-Reference: https://agentpassport.ai/quickstart/
+Run all Passport commands with `--output json`. If a command returns `next_command`, execute that exact command.
 
-1. Install and verify the CLI:
+1. Install and inspect Passport:
    ```bash
    curl -fsSL https://agentpassport.ai/install.sh | bash
    kpass --version
-   ```
-2. Sign up a new user:
-   ```bash
-   kpass signup init --email <email> --output json
-   kpass signup poll --signup-id <SIGNUP_ID> --wait --output json
-   kpass signup exchange --signup-id <SIGNUP_ID> --code <CODE> --output json
-   ```
-   The human user must click the email verification link and provide the code. Some Passport versions may return an `exchange_token`; if so, follow the returned `next_command`.
-3. Log in an existing user:
-   ```bash
-   kpass login init --email <email> --output json
-   kpass login verify --login-id <LOGIN_ID> --code <CODE> --output json
-   ```
-4. Register this seller agent identity once per project:
-   ```bash
-   kpass agent:register --type quotadex-seller --output json
    kpass status --output json
    ```
-   Use the returned `agent_id` as `passport_agent_id` when registering with QuotaDEX. For Kite testnet/dev Passport, pass `--base-url https://passport.dev.gokite.ai` on each command or set `KITE_PASSPORT_BASE_URL=https://passport.dev.gokite.ai`.
+2. If not logged in, sign up or log in:
+   ```bash
+   kpass signup init --email <seller_email> --output json
+   kpass signup poll --signup-id <signup_id> --wait --output json
+   kpass signup exchange --signup-id <signup_id> --code <email_code> --output json
+   ```
+   Existing users can use:
+   ```bash
+   kpass login init --email <seller_email> --output json
+   kpass login verify --login-id <login_id> --code <email_code> --output json
+   ```
+3. Register this seller agent:
+   ```bash
+   kpass agent:register --type quotadex-seller --output json
+   ```
+   Save the returned `agent_id`.
+4. Get the seller payer address:
+   ```bash
+   kpass wallet balance --output json
+   ```
+   Use the returned wallet address as `seller_id`, payout wallet, and `passport_payer_addr`.
 
-## Workflow
+## Gateway registration
 
-1. Resolve seller identity:
-   - Call `get_payer_addr`.
-   - If only CLI access is available, inspect `kpass wallet balance --output json` and use `wallet_address`.
-   - Use the returned EVM address as both `seller_id` and payout wallet.
-2. Register the seller:
-   - `POST {GATEWAY_BASE_URL}/api/v1/sellers/register`
-   - Body:
-     `{ "seller_id": "<payer_addr>", "wallet": "<payer_addr>", "passport_payer_addr": "<payer_addr>", "passport_agent_id": "<agent_id>", "capability": "<capability>", "price_per_task": "<decimal price>" }`
-   - Expect `{ "status": "registered" }`.
-3. Keep the seller online:
-   - `POST {GATEWAY_BASE_URL}/api/v1/sellers/heartbeat` every 15-30 seconds.
-   - Include `seller_id`, `passport_payer_addr`, and `passport_agent_id` when available.
-4. Receive jobs:
-   - Subscribe to Supabase Realtime `jobs` inserts filtered by `seller_id`.
-   - Also poll for assigned jobs as a fallback if Realtime is unavailable.
-5. Execute jobs:
-   - Before each job callback, ask Kite Passport to sign this exact UTF-8 message:
-     ```
-     QuotaDEX Seller Callback
-     action: <start|complete|fail>
-     job_id: <job_id>
-     seller_id: <payer_addr>
-     signed_at: <ISO timestamp>
-     ```
-   - Call `POST /api/v1/jobs/{job_id}/start` with `{ "seller_id": "<payer_addr>", "seller_signature": "<signature>", "seller_signed_at": "<ISO timestamp>" }`.
-   - Run the local task handler using `payload.prompt` and `payload.capability`.
-6. Report result:
-   - On success, sign the same message with `action: complete`, then call `POST /api/v1/jobs/{job_id}/complete` with `{ "seller_id": "<payer_addr>", "seller_signature": "<signature>", "seller_signed_at": "<ISO timestamp>", "result": <json result> }`.
-   - On failure, sign the same message with `action: fail`, then call `POST /api/v1/jobs/{job_id}/fail` with `{ "seller_id": "<payer_addr>", "seller_signature": "<signature>", "seller_signed_at": "<ISO timestamp>", "error": "<error message>" }`.
-   - Gateway releases escrow on completion and refunds the buyer on failure.
+1. Register with the operator-provided Gateway URL:
+   ```bash
+   curl -sS -X POST "<gateway_url>/api/v1/sellers/register" \
+     -H "content-type: application/json" \
+     -d '{
+       "seller_id":"<seller_payer_address>",
+       "wallet":"<seller_payer_address>",
+       "passport_payer_addr":"<seller_payer_address>",
+       "passport_agent_id":"<seller_agent_id>",
+       "capability":"<capability>",
+       "price_per_task":"<price_per_task>"
+     }'
+   ```
+   Continue only if the response is `status: "registered"`.
+2. Send heartbeat every 15-30 seconds while online:
+   ```bash
+   curl -sS -X POST "<gateway_url>/api/v1/sellers/heartbeat" \
+     -H "content-type: application/json" \
+     -d '{
+       "seller_id":"<seller_payer_address>",
+       "passport_payer_addr":"<seller_payer_address>",
+       "passport_agent_id":"<seller_agent_id>"
+     }'
+   ```
 
-## Production Smoke Test cURL
+## Job polling
 
-Use this to register and keep a seller online against a real QuotaDEX Gateway. The seller id must be the Kite Passport payer address and payout wallet.
+Poll jobs through the Gateway. Do not connect directly to Supabase.
 
-```bash
-export GATEWAY_BASE_URL="https://quota-dex.vercel.app"
-export SELLER_ADDR="<seller_passport_payer_addr>"
-export SELLER_AGENT_ID="<seller_passport_agent_id>"
-export CAPABILITY="llama-3"
-export PRICE_PER_TASK="0.01"
+1. Sign this exact message with the seller payer wallet:
+   ```text
+   QuotaDEX Seller Callback
+   action: poll
+   job_id: seller-jobs
+   seller_id: <seller_payer_address>
+   signed_at: <ISO timestamp>
+   ```
+   Use the Passport or wallet signing capability available to the agent. If no message-signing capability is available, stop and ask the operator for the supported signing method; do not fake a signature.
+2. Poll assigned jobs:
+   ```bash
+   curl -sS -X POST "<gateway_url>/api/v1/sellers/jobs" \
+     -H "content-type: application/json" \
+     -d '{
+       "seller_id":"<seller_payer_address>",
+       "seller_signature":"<poll_signature>",
+       "seller_signed_at":"<ISO timestamp>"
+     }'
+   ```
+   The response returns `jobs` with `status` `paid` or `running`.
 
-curl -sS -X POST "$GATEWAY_BASE_URL/api/v1/sellers/register" \
-  -H "content-type: application/json" \
-  -d "{
-    \"seller_id\":\"$SELLER_ADDR\",
-    \"wallet\":\"$SELLER_ADDR\",
-    \"passport_payer_addr\":\"$SELLER_ADDR\",
-    \"passport_agent_id\":\"$SELLER_AGENT_ID\",
-    \"capability\":\"$CAPABILITY\",
-    \"price_per_task\":\"$PRICE_PER_TASK\"
-  }" | jq
+## Execute a job
 
-curl -sS -X POST "$GATEWAY_BASE_URL/api/v1/sellers/heartbeat" \
-  -H "content-type: application/json" \
-  -d "{
-    \"seller_id\":\"$SELLER_ADDR\",
-    \"passport_payer_addr\":\"$SELLER_ADDR\",
-    \"passport_agent_id\":\"$SELLER_AGENT_ID\"
-  }" | jq
-```
+For each `paid` job:
 
-For job callbacks, sign the exact callback message described in the Workflow section with the seller wallet. Then call:
+1. Sign the start message:
+   ```text
+   QuotaDEX Seller Callback
+   action: start
+   job_id: <job_id>
+   seller_id: <seller_payer_address>
+   signed_at: <ISO timestamp>
+   ```
+2. Start the job:
+   ```bash
+   curl -sS -X POST "<gateway_url>/api/v1/jobs/<job_id>/start" \
+     -H "content-type: application/json" \
+     -d '{
+       "seller_id":"<seller_payer_address>",
+       "seller_signature":"<start_signature>",
+       "seller_signed_at":"<ISO timestamp>"
+     }'
+   ```
+3. Run the local task handler with `payload.capability` and `payload.prompt`.
+4. On success, sign `action: complete` for the same `job_id`, then send:
+   ```bash
+   curl -sS -X POST "<gateway_url>/api/v1/jobs/<job_id>/complete" \
+     -H "content-type: application/json" \
+     -d '{
+       "seller_id":"<seller_payer_address>",
+       "seller_signature":"<complete_signature>",
+       "seller_signed_at":"<ISO timestamp>",
+       "result":<json_result>
+     }'
+   ```
+5. On failure, sign `action: fail` for the same `job_id`, then send:
+   ```bash
+   curl -sS -X POST "<gateway_url>/api/v1/jobs/<job_id>/fail" \
+     -H "content-type: application/json" \
+     -d '{
+       "seller_id":"<seller_payer_address>",
+       "seller_signature":"<fail_signature>",
+       "seller_signed_at":"<ISO timestamp>",
+       "error":"<error_message>"
+     }'
+   ```
 
-```bash
-curl -sS -X POST "$GATEWAY_BASE_URL/api/v1/jobs/$JOB_ID/start" \
-  -H "content-type: application/json" \
-  -d "{
-    \"seller_id\":\"$SELLER_ADDR\",
-    \"seller_signature\":\"$START_SIGNATURE\",
-    \"seller_signed_at\":\"$START_SIGNED_AT\"
-  }" | jq
-
-curl -sS -X POST "$GATEWAY_BASE_URL/api/v1/jobs/$JOB_ID/complete" \
-  -H "content-type: application/json" \
-  -d "{
-    \"seller_id\":\"$SELLER_ADDR\",
-    \"seller_signature\":\"$COMPLETE_SIGNATURE\",
-    \"seller_signed_at\":\"$COMPLETE_SIGNED_AT\",
-    \"result\":{\"text\":\"seller result\"}
-  }" | jq
-```
-
-Expected completion output includes `release.status: "released"` and a `release.tx_hash` on Kite Testnet.
-
-## Safety Rules
+## Safety rules
 
 - Never register a wallet different from the Passport payer address.
-- Never paste Passport JWTs, passkey material, or `.kite-passport/config.json` into Gateway requests.
-- Always use `kpass status --output json` to decide whether signup, login, or agent registration is still needed.
-- Never accept a job whose `seller_id` does not match the Passport payer address.
-- Never reuse a seller callback signature across jobs, actions, or timestamps.
-- Never call complete before local execution succeeds.
+- Never connect to Supabase or ask for Supabase keys.
+- Never paste Passport JWTs, private keys, passkey material, or `.kpass` files into Gateway requests.
+- Never accept a job whose response `seller_id` or signed message seller does not match the payer address.
+- Never reuse a seller callback signature across actions, jobs, or timestamps.
 - Keep task output JSON-serializable.

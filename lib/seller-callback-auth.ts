@@ -7,7 +7,7 @@ import {
   verifyMessage
 } from "viem";
 
-export type SellerCallbackAction = "start" | "complete" | "fail";
+export type SellerCallbackAction = "poll" | "start" | "complete" | "fail";
 
 export class SellerCallbackSignatureError extends Error {
   readonly code = "SELLER_SIGNATURE_INVALID";
