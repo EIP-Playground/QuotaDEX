@@ -32,9 +32,14 @@ export async function POST(request: Request) {
   const { error: upsertError } = await supabase.from("sellers").upsert(
     {
       id: seller.seller_id,
+      wallet_address: seller.wallet ?? seller.seller_id,
+      passport_agent_id: seller.passport_agent_id ?? null,
+      passport_payer_addr: seller.passport_payer_addr ?? seller.seller_id,
+      approval_status: "approved",
       capability: seller.capability,
       price_per_task: seller.price_per_task,
       status: "idle",
+      last_heartbeat_at: updatedAt,
       updated_at: updatedAt
     },
     {

@@ -55,6 +55,9 @@ export async function POST(request: Request) {
     .from("sellers")
     .update({
       status: nextStatus,
+      passport_agent_id: seller.passport_agent_id ?? undefined,
+      passport_payer_addr: seller.passport_payer_addr ?? seller.seller_id,
+      last_heartbeat_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     })
     .eq("id", seller.seller_id);

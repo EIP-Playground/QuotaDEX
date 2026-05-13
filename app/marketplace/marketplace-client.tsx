@@ -322,7 +322,7 @@ export function MarketplaceClient() {
               <div className="statLabel"><TbCoin /> Avg Price / 1k tokens</div>
               <div className="statVal">
                 {stats.price.toFixed(4)}
-                <span className="small">PYUSD</span>
+                <span className="small">USDT</span>
               </div>
               <div className="statDelta down">−2.4% vs yesterday</div>
               <Sparkline data={[3, 3.2, 2.9, 2.7, 2.5, 2.6, 2.4, 2.5, 2.3, 2.2, 2.1, 2.0]} />
@@ -330,7 +330,7 @@ export function MarketplaceClient() {
             <article className="stat">
               <div className="statLabel"><TbChartBar /> 24h Volume</div>
               <div className="statVal">
-                {(stats.vol / 1000).toFixed(1)}k<span className="small">PYUSD</span>
+                {(stats.vol / 1000).toFixed(1)}k<span className="small">USDT</span>
               </div>
               <div className="statDelta">+18.3% vs yesterday</div>
               <Sparkline data={[50, 55, 60, 65, 62, 70, 75, 80, 85, 90, 92, 95]} />
@@ -353,7 +353,7 @@ export function MarketplaceClient() {
                   <tr>
                     <th>Seller</th>
                     <th>Capability</th>
-                    <th>Price (PYUSD)</th>
+                    <th>Price (USDT)</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -406,7 +406,7 @@ export function MarketplaceClient() {
                           </>
                         ) : (
                           <>
-                            <b>{t.from}</b> paid <span className="amt">{t.amt} PYUSD</span> to{" "}
+                            <b>{t.from}</b> paid <span className="amt">{t.amt} USDT</span> to{" "}
                             <b>{t.to}</b> for {t.cap} task
                           </>
                         )}
@@ -470,7 +470,7 @@ export function MarketplaceClient() {
                         </div>
                         <div className="agentCap">{s.cap} · {s.status}</div>
                       </div>
-                      <div className="agentScore">{s.price} PYUSD</div>
+                      <div className="agentScore">{s.price} USDT</div>
                     </div>
                   ))
                 ) : (
@@ -480,7 +480,7 @@ export function MarketplaceClient() {
                         <div className="agentId">{a}</div>
                         <div className="agentCap">GPT-4-Turbo · Llama-3 · {3 + i} capabilities</div>
                       </div>
-                      <div className="agentScore">{(12.4 - i * 1.8).toFixed(1)}k PYUSD</div>
+                      <div className="agentScore">{(12.4 - i * 1.8).toFixed(1)}k USDT</div>
                     </div>
                   ))
                 )}

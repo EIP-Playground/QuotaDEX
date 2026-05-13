@@ -18,7 +18,7 @@ Minimal Phase 5 demo worker:
 - sends heartbeat updates
 - subscribes to Supabase Realtime for jobs assigned to that seller
 - polls for existing `paid` jobs as a fallback if Realtime misses an insert
-- reports `start / complete / fail` back to the Gateway
+- signs and reports `start / complete / fail` back to the Gateway
 
 For the local controlled demo, the worker prefers `SUPABASE_SERVICE_ROLE_KEY` when it is present.
 This avoids depending on anon-key table read grants during testing.
@@ -32,22 +32,24 @@ node --env-file=.env.local scripts/seller-worker.mjs
 Optional local overrides:
 
 - `GATEWAY_BASE_URL` default: `http://localhost:3000`
-- `SELLER_ID` default: `seller-demo`
+- `SELLER_PRIVATE_KEY` required; the derived address is used as the seller ID
+- `SELLER_ID` optional, but when set it must match `SELLER_PRIVATE_KEY`
 - `SELLER_CAPABILITY` default: `llama-3`
 - `SELLER_PRICE_PER_TASK` default: `0.01`
 - `SELLER_HEARTBEAT_INTERVAL_MS` default: `20000`
 - `SELLER_PENDING_JOB_POLL_INTERVAL_MS` default: `5000`
 
-Note:
+Notes:
 
-- For Phase 7 real on-chain payment tests, `SELLER_ID` should be the seller wallet address because the escrow contract releases funds to `quote.seller_id`.
+- For Kite Passport/x402 tests, `SELLER_ID` should be the seller Passport payer address because the escrow contract releases funds to `quote.seller_id`.
+- Production seller agents should use Kite Passport signing instead of raw private keys; this script is a local EOA helper.
 
 ## buyer-demo.mjs
 
-Minimal Phase 6/7 demo buyer:
+Legacy local demo buyer:
 
 - calls `POST /api/v1/jobs/quote`
-- either simulates a mock payment or performs real `approve + deposit`
+- either simulates a mock payment or attaches a prebuilt `X-PAYMENT`
 - calls `POST /api/v1/jobs/verify`
 - waits for the final result through Realtime, with polling fallback
 
@@ -65,26 +67,20 @@ Optional local overrides:
 - `BUYER_PROMPT` default: `hello from buyer demo`
 - `BUYER_RESULT_TIMEOUT_MS` default: `30000`
 - `BUYER_PAYMENT_MODE`
-  - omitted: auto-detect `chain` when `BUYER_PRIVATE_KEY` exists, otherwise `mock`
+  - omitted: use `mock`
   - `mock`: use the existing local mock payment flow
-  - `chain`: use `approve + deposit` against the custom Escrow route
   - `facilitator`: send a real `X-PAYMENT` header to the Gateway
 
-To enable real on-chain payment mode:
+To enable current x402 escrow mode:
 
-- set `BUYER_PRIVATE_KEY`
-- set `KITE_RPC_URL`
-- set `PYUSD_CONTRACT_ADDRESS`
-- set `ESCROW_CONTRACT_ADDRESS`
-- optionally set `PYUSD_DECIMALS` default: `6`
+- set `BUYER_PAYMENT_MODE=facilitator`
+- set `BUYER_ID` to the buyer Passport payer address
+- set `BUYER_X_PAYMENT` to a real `X-PAYMENT` value produced by Kite Passport `approve_payment`
+- ensure Gateway has `KITE_PAYMENT_ASSET_ADDRESS`, `PAYMENT_TOKEN_DECIMALS`, `PAYMENT_CURRENCY`, `ESCROW_CONTRACT_ADDRESS`, and `GATEWAY_PRIVATE_KEY`
 
 In real payment mode:
 
-- `BUYER_ID` must match the wallet address derived from `BUYER_PRIVATE_KEY`
+- `BUYER_ID` should be the buyer Passport payer address
 - the quoted `seller_id` must already be an EVM address
 
-To enable facilitator testing mode:
-
-- set `BUYER_PAYMENT_MODE=facilitator`
-- set `BUYER_X_PAYMENT` to a real `X-PAYMENT` value produced by Kite MCP `approve_payment`
-- keep using the same `quote -> verify -> wait result` flow; the script will attach the header when calling `POST /api/v1/jobs/verify`
+Direct `approve + deposit` mode has been removed from the production escrow contract. Production verification expects `X-PAYMENT`.

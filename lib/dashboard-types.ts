@@ -1,5 +1,5 @@
 export type SellerStatus = "offline" | "idle" | "reserved" | "busy";
-export type JobStatus = "paid" | "running" | "done" | "failed";
+export type JobStatus = "settling" | "paid" | "running" | "done" | "failed";
 
 export type DashboardSummaryResponse = {
   metrics: {
@@ -10,9 +10,9 @@ export type DashboardSummaryResponse = {
   };
   sellerStatus: Record<SellerStatus, number>;
   settlement: {
-    primary: "Custom Escrow";
-    fallback: "Mock";
-    future: "Pieverse Facilitator";
+    primary: "Kite x402 Escrow";
+    fallback: "Mock fallback only";
+    future: "Mainnet env switch";
   };
   updatedAt: string | null;
 };

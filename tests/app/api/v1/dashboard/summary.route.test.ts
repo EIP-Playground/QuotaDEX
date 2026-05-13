@@ -61,9 +61,9 @@ describe("GET /api/v1/dashboard/summary", () => {
         offline: 1
       },
       settlement: {
-        primary: "Custom Escrow",
-        fallback: "Mock",
-        future: "Pieverse Facilitator"
+        primary: "Kite x402 Escrow",
+        fallback: "Mock fallback only",
+        future: "Mainnet env switch"
       },
       updatedAt: "2026-04-19T08:00:00.000Z"
     });

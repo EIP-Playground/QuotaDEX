@@ -4,58 +4,24 @@
     "inputs": [
       {
         "name": "gateway_",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       },
       {
         "name": "paymentToken_",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
   },
   {
-    "type": "function",
-    "name": "deposit",
-    "inputs": [
-      {
-        "name": "paymentId",
-        "type": "bytes32"
-      },
-      {
-        "name": "seller",
-        "type": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    "type": "fallback",
+    "stateMutability": "payable"
   },
   {
-    "type": "function",
-    "name": "release",
-    "inputs": [
-      {
-        "name": "paymentId",
-        "type": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "refund",
-    "inputs": [
-      {
-        "name": "paymentId",
-        "type": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    "type": "receive",
+    "stateMutability": "payable"
   },
   {
     "type": "function",
@@ -64,7 +30,8 @@
     "outputs": [
       {
         "name": "",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -76,7 +43,8 @@
     "outputs": [
       {
         "name": "",
-        "type": "address"
+        "type": "address",
+        "internalType": "contract IERC20Minimal"
       }
     ],
     "stateMutability": "view"
@@ -87,74 +55,260 @@
     "inputs": [
       {
         "name": "",
-        "type": "bytes32"
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
       {
         "name": "buyer",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       },
       {
         "name": "seller",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       },
       {
         "name": "amount",
-        "type": "uint256"
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "settlementTxHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
       },
       {
         "name": "state",
-        "type": "uint8"
+        "type": "uint8",
+        "internalType": "enum QuotaDEXEscrow.PaymentState"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "recoverExcessPaymentToken",
+    "inputs": [
+      {
+        "name": "recipient",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "recoverUnsupportedToken",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "refund",
+    "inputs": [
+      {
+        "name": "paymentId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "registerFacilitatorPayment",
+    "inputs": [
+      {
+        "name": "paymentId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "seller",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "settlementTxHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "release",
+    "inputs": [
+      {
+        "name": "paymentId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "sweepNative",
+    "inputs": [
+      {
+        "name": "recipient",
+        "type": "address",
+        "internalType": "address payable"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "totalLiabilities",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "usedSettlementTxHashes",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
   },
   {
     "type": "event",
-    "name": "PaymentDeposited",
+    "name": "ExcessPaymentTokenRecovered",
     "inputs": [
       {
-        "name": "paymentId",
-        "type": "bytes32",
-        "indexed": true
-      },
-      {
-        "name": "buyer",
+        "name": "recipient",
         "type": "address",
-        "indexed": true
-      },
-      {
-        "name": "seller",
-        "type": "address",
-        "indexed": true
+        "indexed": true,
+        "internalType": "address"
       },
       {
         "name": "amount",
         "type": "uint256",
-        "indexed": false
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
   },
   {
     "type": "event",
-    "name": "PaymentReleased",
+    "name": "FacilitatorPaymentRegistered",
     "inputs": [
       {
         "name": "paymentId",
         "type": "bytes32",
-        "indexed": true
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       },
       {
         "name": "seller",
         "type": "address",
-        "indexed": true
+        "indexed": true,
+        "internalType": "address"
       },
       {
         "name": "amount",
         "type": "uint256",
-        "indexed": false
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "settlementTxHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NativeSwept",
+    "inputs": [
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -166,19 +320,157 @@
       {
         "name": "paymentId",
         "type": "bytes32",
-        "indexed": true
+        "indexed": true,
+        "internalType": "bytes32"
       },
       {
         "name": "buyer",
         "type": "address",
-        "indexed": true
+        "indexed": true,
+        "internalType": "address"
       },
       {
         "name": "amount",
         "type": "uint256",
-        "indexed": false
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PaymentReleased",
+    "inputs": [
+      {
+        "name": "paymentId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "seller",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UnsupportedTokenRecovered",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "CannotRecoverPaymentToken",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "EscrowBalanceInsufficient",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidAmount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidBuyer",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidGateway",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidPaymentToken",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidRecipient",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidSeller",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidSettlementTxHash",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NativeTransferFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NativeTransferRejected",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotGateway",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PaymentAlreadyExists",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PaymentNotFunded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Reentrancy",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SettlementAlreadyRegistered",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TokenTransferFailed",
+    "inputs": []
   }
 ]

@@ -7,6 +7,10 @@
 
 # testing
 /coverage
+/cache
+/out
+/broadcast
+deploy-*.json
 
 # next.js
 /.next/
@@ -34,3 +38,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.kite-passport/

@@ -1,36 +1,13 @@
 #!/usr/bin/env node
 
 import { createClient } from "@supabase/supabase-js";
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-  isAddress,
-  parseUnits
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import escrowAbi from "../contracts/QuotaDEXEscrow.abi.json" with { type: "json" };
 
 const DEFAULT_GATEWAY_BASE_URL = "http://localhost:3000";
 const DEFAULT_CAPABILITY = "llama-3";
 const DEFAULT_PROMPT = "hello from buyer demo";
 const DEFAULT_RESULT_TIMEOUT_MS = 30_000;
-const DEFAULT_PYUSD_DECIMALS = 6;
 const POLL_INTERVAL_MS = 1_000;
-const SUPPORTED_PAYMENT_MODES = new Set(["mock", "chain", "facilitator"]);
-
-const erc20ApproveAbi = [
-  {
-    type: "function",
-    name: "approve",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "value", type: "uint256" }
-    ],
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "nonpayable"
-  }
-];
+const SUPPORTED_PAYMENT_MODES = new Set(["mock", "facilitator"]);
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -79,11 +56,10 @@ function getBuyerConfig() {
     10
   );
   const requestedPaymentMode = process.env.BUYER_PAYMENT_MODE?.trim().toLowerCase();
-  const buyerPrivateKey = process.env.BUYER_PRIVATE_KEY?.trim();
 
   if (requestedPaymentMode && !SUPPORTED_PAYMENT_MODES.has(requestedPaymentMode)) {
     throw new Error(
-      `BUYER_PAYMENT_MODE must be one of: ${Array.from(SUPPORTED_PAYMENT_MODES).join(", ")}.`
+      `BUYER_PAYMENT_MODE must be one of: ${Array.from(SUPPORTED_PAYMENT_MODES).join(", ")}. Direct chain deposits were removed; use facilitator for x402 escrow.`
     );
   }
 
@@ -92,47 +68,12 @@ function getBuyerConfig() {
       gatewayBaseUrl,
       supabaseUrl,
       supabaseAnonKey,
-      buyerId: process.env.BUYER_ID?.trim() || "buyer-demo",
+      buyerId: requireEnv("BUYER_ID"),
       capability,
       prompt,
       resultTimeoutMs,
       paymentMode: "facilitator",
       xPayment: requireEnv("BUYER_X_PAYMENT")
-    };
-  }
-
-  if (requestedPaymentMode === "chain" || (!requestedPaymentMode && buyerPrivateKey)) {
-    if (!buyerPrivateKey) {
-      throw new Error("BUYER_PRIVATE_KEY is required when BUYER_PAYMENT_MODE=chain.");
-    }
-
-    const account = privateKeyToAccount(
-      buyerPrivateKey.startsWith("0x") ? buyerPrivateKey : `0x${buyerPrivateKey}`
-    );
-    const buyerId = process.env.BUYER_ID?.trim() || account.address;
-
-    if (buyerId.toLowerCase() !== account.address.toLowerCase()) {
-      throw new Error("BUYER_ID must match BUYER_PRIVATE_KEY address in chain mode.");
-    }
-
-    return {
-      gatewayBaseUrl,
-      supabaseUrl,
-      supabaseAnonKey,
-      buyerId,
-      capability,
-      prompt,
-      resultTimeoutMs,
-      paymentMode: "chain",
-      buyerPrivateKey:
-        buyerPrivateKey.startsWith("0x") ? buyerPrivateKey : `0x${buyerPrivateKey}`,
-      kiteRpcUrl: requireEnv("KITE_RPC_URL"),
-      pyusdContractAddress: requireEnv("PYUSD_CONTRACT_ADDRESS"),
-      escrowContractAddress: requireEnv("ESCROW_CONTRACT_ADDRESS"),
-      pyusdDecimals: Number.parseInt(
-        process.env.PYUSD_DECIMALS ?? `${DEFAULT_PYUSD_DECIMALS}`,
-        10
-      )
     };
   }
 
@@ -214,86 +155,12 @@ function buildMockTxHash() {
   return `0x${hex}abc123`;
 }
 
-function requireAddress(value, label) {
-  if (!isAddress(value)) {
-    throw new Error(`${label} must be a valid EVM address.`);
-  }
-
-  return value;
-}
-
-function toPaymentIdBytes32(paymentId) {
-  const normalized = paymentId.startsWith("0x") ? paymentId : `0x${paymentId}`;
-
-  if (!/^0x[a-fA-F0-9]{64}$/.test(normalized)) {
-    throw new Error("payment_id must be a 32-byte hex string.");
-  }
-
-  return normalized;
-}
-
-async function createChainPayment(config, quote) {
-  const account = privateKeyToAccount(config.buyerPrivateKey);
-  const publicClient = createPublicClient({
-    transport: http(config.kiteRpcUrl)
-  });
-  const walletClient = createWalletClient({
-    account,
-    transport: http(config.kiteRpcUrl)
-  });
-  const escrowAddress = requireAddress(
-    config.escrowContractAddress,
-    "ESCROW_CONTRACT_ADDRESS"
-  );
-  const quoteEscrowAddress = requireAddress(quote.pay_to, "quote.pay_to");
-  const tokenAddress = requireAddress(
-    config.pyusdContractAddress,
-    "PYUSD_CONTRACT_ADDRESS"
-  );
-  const sellerAddress = requireAddress(quote.seller_id, "quote.seller_id");
-  const paymentId = toPaymentIdBytes32(quote.payment_id ?? quote.fingerprint);
-
-  if (quoteEscrowAddress.toLowerCase() !== escrowAddress.toLowerCase()) {
-    throw new Error("Quote escrow address does not match ESCROW_CONTRACT_ADDRESS.");
-  }
-
-  const amount = parseUnits(quote.amount, config.pyusdDecimals);
-  const approvalTxHash = await walletClient.writeContract({
-    address: tokenAddress,
-    abi: erc20ApproveAbi,
-    functionName: "approve",
-    args: [escrowAddress, amount]
-  });
-
-  await publicClient.waitForTransactionReceipt({
-    hash: approvalTxHash
-  });
-
-  const depositTxHash = await walletClient.writeContract({
-    address: escrowAddress,
-    abi: escrowAbi,
-    functionName: "deposit",
-    args: [paymentId, sellerAddress, amount]
-  });
-
-  await publicClient.waitForTransactionReceipt({
-    hash: depositTxHash
-  });
-
-  return {
-    txHash: depositTxHash,
-    approvalTxHash
-  };
-}
-
 async function verifyPayment(config, quote) {
   const paymentResult =
-    config.paymentMode === "chain"
-      ? await createChainPayment(config, quote)
-      : config.paymentMode === "facilitator"
-        ? {
-            txHash: null,
-            approvalTxHash: null,
+    config.paymentMode === "facilitator"
+      ? {
+          txHash: null,
+          approvalTxHash: null,
             xPayment: config.xPayment
           }
         : {

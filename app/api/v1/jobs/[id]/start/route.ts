@@ -6,6 +6,11 @@ import {
   internalServerErrorResponse,
   notFoundResponse
 } from "@/lib/errors";
+import { getServerEnv } from "@/lib/env";
+import {
+  assertValidSellerCallbackSignature,
+  SellerCallbackSignatureError
+} from "@/lib/seller-callback-auth";
 import {
   loadJobSnapshot,
   logJobEvent,
@@ -66,6 +71,39 @@ export async function POST(request: Request, context: RouteContext) {
     return conflictResponse(
       `Job must be in paid status before start. Current status is ${jobSnapshot.status}.`,
       "INVALID_JOB_STATE"
+    );
+  }
+
+  let env: ReturnType<typeof getServerEnv>;
+
+  try {
+    env = getServerEnv();
+  } catch (error) {
+    return internalServerErrorResponse(
+      "Missing Gateway configuration for seller callback verification.",
+      "GATEWAY_CONFIG_MISSING",
+      { reason: error instanceof Error ? error.message : "Unknown config error." }
+    );
+  }
+
+  try {
+    await assertValidSellerCallbackSignature({
+      action: "start",
+      jobId: id,
+      sellerId: startRequest.seller_id,
+      signature: startRequest.seller_signature,
+      signedAt: startRequest.seller_signed_at,
+      rpcUrl: env.KITE_RPC_URL
+    });
+  } catch (error) {
+    if (error instanceof SellerCallbackSignatureError) {
+      return forbiddenResponse(error.message, error.code);
+    }
+
+    return internalServerErrorResponse(
+      "Failed to verify seller callback signature.",
+      "SELLER_SIGNATURE_CHECK_FAILED",
+      { reason: error instanceof Error ? error.message : "Unknown signature error." }
     );
   }
 

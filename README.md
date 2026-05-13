@@ -4,7 +4,7 @@
 
 **The first decentralized AI compute marketplace — built for agents, settled on-chain.**
 
-QuotaDEX is an Agent-to-Agent (A2A) secondary market where any LLM seller can monetize idle quota and any autonomous agent can buy compute on demand — no API keys, no contracts, no human in the loop. Every job is quoted via HTTP 402, backed by a custom Escrow contract on Kite AI, and settled in PYUSD with an explorer-verifiable proof.
+QuotaDEX is an Agent-to-Agent (A2A) secondary market where any LLM seller can monetize idle quota and any autonomous agent can buy compute on demand — no API keys, no contracts, no human in the loop. Every job is quoted via HTTP 402, paid through Kite x402/Agent Passport, backed by a custom Escrow contract on Kite AI, and settled in Test USDT on Kite Testnet.
 
 Part of the **AgentBazaar** vision: an open, accountable commerce layer for the autonomous-agent economy.
 
@@ -33,7 +33,7 @@ QuotaDEX solves this with three primitives:
 | Primitive | What it does |
 | --- | --- |
 | **x402 Quote** | Buyer requests compute; Gateway fingerprints the request, reserves a seller, and returns `402` with `payment_id` and price |
-| **Escrow on Kite** | Buyer deposits PYUSD into the escrow contract; Gateway releases on completion and refunds on failure |
+| **x402 Escrow on Kite** | Buyer approves an x402 payment to the escrow contract; Gateway verifies facilitator settlement, then releases on completion or refunds on failure |
 | **A2A Settlement** | Seller receives the assigned job via Supabase Realtime, runs it, and callbacks trigger on-chain settlement |
 
 ---
@@ -46,8 +46,8 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
      │──POST /jobs/quote────────────▶│                               │
      │◀──402 { payment_id, price }───│                               │
      │                               │                               │
-     │  [approve + deposit on-chain] │                               │
-     │──POST /jobs/verify───────────▶│                               │
+     │  [Kite Passport approve]      │                               │
+     │──POST /jobs/verify X-PAYMENT─▶│                               │
      │◀──200 { job_id }──────────────│                               │
      │                               │──Realtime push───────────────▶│
      │                               │◀─POST /jobs/:id/start─────────│
@@ -57,8 +57,8 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
 ```
 
 1. **Quote** — Buyer calls `/jobs/quote`. Gateway fingerprints the request, reserves an available seller, caches the quote context in Redis, and returns `402` with a price and `payment_id`.
-2. **Deposit** — Buyer approves the PYUSD amount and calls `Escrow.deposit(paymentId, seller, amount)` on Kite.
-3. **Verify** — Buyer calls `/jobs/verify` with the on-chain receipt. Gateway validates the deposit, creates a formal `paid` job, and moves the seller to `busy`.
+2. **Approve** — Buyer uses Kite Agent Passport to approve the returned x402 `accepts[0]`, whose `payTo` is the escrow contract.
+3. **Verify** — Buyer calls `/jobs/verify` with `X-PAYMENT`. Gateway verifies and settles through Pieverse, confirms the token Transfer into escrow, registers it on `QuotaDEXEscrow`, creates a formal `paid` job, and moves the seller to `busy`.
 4. **Execute** — Seller receives the job via Supabase Realtime, runs it, and calls back `start → complete` (or `fail`).
 5. **Settle** — On `complete`, Gateway calls `Escrow.release(paymentId)`. On `fail`, Gateway calls `Escrow.refund(paymentId)`.
 
@@ -86,17 +86,18 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
      ┌───────▼──────────────┐
      │   Kite AI (EVM)      │
      │  QuotaDEXEscrow.sol  │
-     │  PYUSD payments      │
+     │  Test USDT payments  │
      └──────────────────────┘
 ```
 
 **Key design decisions:**
 
 - `payment_id` and `job_id` are intentionally separate — payment identity is established at quote time, job identity at verify time.
-- `fingerprint` is reused as `payment_id` in the MVP, binding the exact request parameters to the on-chain deposit.
+- `fingerprint` is reused as `payment_id` in the MVP, binding the exact request parameters to the on-chain escrow registration.
 - Supabase is the single source of truth for all formal state transitions.
 - Redis stores only short-lived quote context (TTL-bounded).
 - Seller state transitions flow exclusively through Gateway APIs.
+- Gateway is the trusted escrow executor: it verifies x402 settlement receipts and calls contract release/refund.
 
 ---
 
@@ -122,10 +123,13 @@ lib/
 supabase/
   migrations/         # sellers, jobs, events schema
 contracts/
-  QuotaDEXEscrow.sol  # Solidity escrow: deposit, release, refund
+  QuotaDEXEscrow.sol  # Solidity escrow: x402 registration, release, refund
 scripts/
   seller-worker.mjs   # Local seller demo (register → listen → complete)
-  buyer-demo.mjs      # Local buyer demo (quote → deposit → verify → wait)
+  buyer-demo.mjs      # Local buyer demo (quote → verify → wait)
+skills/
+  quotadex-buyer/     # English Buyer Agent workflow for Passport + x402
+  quotadex-seller/    # English Seller Agent workflow for Passport identity
 docs/                 # Product spec, MVP rules, dev sequence, phase tracker
 ```
 
@@ -145,12 +149,15 @@ docs/                 # Product spec, MVP rules, dev sequence, phase tracker
 
 | Method | Path                           | Description                                              |
 | ------ | ------------------------------ | -------------------------------------------------------- |
-| `POST` | `/api/v1/jobs/quote`           | Get a quote; returns `402` with `payment_id` and price   |
-| `POST` | `/api/v1/jobs/verify`          | Submit on-chain receipt; creates the paid job            |
+| `POST` | `/api/v1/jobs/quote`           | Get a quote; returns `402` with x402 `accepts` and escrow payment metadata |
+| `POST` | `/api/v1/jobs/verify`          | Submit `X-PAYMENT`; settles x402, registers escrow payment, and creates the paid job |
 | `GET`  | `/api/v1/jobs/:id`             | Poll job status (fallback for Realtime)                  |
 | `POST` | `/api/v1/jobs/:id/start`       | Seller signals job has started                           |
 | `POST` | `/api/v1/jobs/:id/complete`    | Seller signals completion; triggers `Escrow.release`     |
 | `POST` | `/api/v1/jobs/:id/fail`        | Seller signals failure; triggers `Escrow.refund`         |
+
+Seller job callbacks must include `seller_signature` and `seller_signed_at`.
+The signature covers `action`, `job_id`, `seller_id`, and `signed_at` using the message in `skills/quotadex-seller/SKILL.md`.
 
 ### Dashboard
 
@@ -180,22 +187,29 @@ UPSTASH_REDIS_REST_TOKEN=
 GATEWAY_SALT=                           # Random secret used in fingerprint generation
 
 # Kite AI / blockchain
-KITE_RPC_URL=                           # RPC endpoint for the Kite network
+KITE_NETWORK=kite-testnet
+KITE_CHAIN_ID=2368
+KITE_RPC_URL=https://rpc-testnet.gokite.ai
+KITE_EXPLORER_URL=https://testnet.kitescan.ai
 ESCROW_CONTRACT_ADDRESS=                # Deployed QuotaDEXEscrow address
 GATEWAY_PRIVATE_KEY=                    # Gateway wallet private key (NOT the contract's)
-PYUSD_CONTRACT_ADDRESS=                 # PYUSD token contract address
-PYUSD_DECIMALS=6                        # Token decimals (default: 6)
 
-# Pieverse Facilitator (future / optional)
+# Payment asset / x402 facilitator
 PIEVERSE_FACILITATOR_BASE_URL=https://facilitator.pieverse.io
-KITE_PAYMENT_ASSET_ADDRESS=
-GATEWAY_MERCHANT_WALLET=
+KITE_PAYMENT_ASSET_ADDRESS=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63
+PAYMENT_TOKEN_DECIMALS=18
+PAYMENT_CURRENCY=USDT
+ALLOW_MOCK_PAYMENTS=false
 
-# Buyer demo script (optional)
-BUYER_PRIVATE_KEY=                      # Buyer wallet for real approve + deposit
+# One-click Kite Testnet demo. These wallets spend and receive Test USDT only.
+BUYER_PRIVATE_KEY=
+DEMO_SELLER_PRIVATE_KEY=
+DEMO_PRICE_PER_TASK=0.001
+DEMO_RATE_LIMIT=3
 ```
 
 > `GATEWAY_PRIVATE_KEY` is the private key of a normal wallet controlled by the Gateway. Contracts do not have private keys.
+> The public `/demo` page uses `BUYER_PRIVATE_KEY` and `DEMO_SELLER_PRIVATE_KEY` server-side only. Never expose them to the browser.
 
 ---
 
@@ -226,11 +240,12 @@ pnpm dev
 # Terminal 2 — start a seller worker
 node scripts/seller-worker.mjs
 
-# Terminal 3 — run a buyer demo (mock payment)
-node scripts/buyer-demo.mjs
+# Agent workflow docs
+cat skills/quotadex-buyer/SKILL.md
+cat skills/quotadex-seller/SKILL.md
 ```
 
-For a real on-chain flow, set `BUYER_PAYMENT_MODE=escrow` and provide `BUYER_PRIVATE_KEY`.
+Production verification requires `X-PAYMENT` by default. Set `ALLOW_MOCK_PAYMENTS=true` only for local demos.
 
 ---
 
@@ -244,22 +259,22 @@ For a real on-chain flow, set `BUYER_PAYMENT_MODE=escrow` and provide `BUYER_PRI
 | Supabase schema (sellers, jobs, events)             | Done            |
 | Seller lifecycle (register / heartbeat / offline)   | Done            |
 | Quote + fingerprint + Redis cache                   | Done            |
-| Verify (mock fallback)                              | Done            |
+| Verify (Kite x402 + escrow registration)            | Done            |
 | Seller worker script                                | Done            |
 | Buyer demo script                                   | Done            |
-| Custom Escrow on Kite (deposit / release / refund)  | Done            |
+| Custom Escrow on Kite (x402 register / release / refund) | Done       |
 | Mock E2E end-to-end pass                            | Done            |
-| Escrow-backed demo hardening                        | **In progress** |
+| Passport Skills for Buyer and Seller agents         | Done            |
 
-Primary payment route: **Custom Escrow on Kite**
-Stable fallback: **Mock payment flow**
+Primary payment route: **Kite x402 → QuotaDEXEscrow → Seller/Buyer**
+Local fallback: **Mock payments only when explicitly enabled**
 
 ---
 
 ## Roadmap
 
-- [ ] Pieverse Facilitator integration (`X-PAYMENT` header flow)
-- [ ] Agent Passport (decentralized agent identity)
+- [x] Pieverse Facilitator integration (`X-PAYMENT` header flow)
+- [x] Agent Passport workflow for Buyer and Seller agents
 - [ ] Kite MCP integration
 - [ ] Real x402 payment header (production)
 - [ ] Buyer SDK
@@ -273,5 +288,5 @@ Stable fallback: **Mock payment flow**
 
 - **AgentBazaar** — the planned parent marketplace hosting multiple A2A verticals, all sharing the same quote-escrow-settle accountability layer.
 - **Kite AI** — the EVM-compatible chain used for on-chain settlement.
-- **PYUSD** — the payment token used in all escrow transactions.
+- **Test USDT** — the current Kite Testnet escrow payment token.
 - **x402** — the HTTP payment protocol used for machine-native payment negotiation.

@@ -8,13 +8,18 @@ import {
 } from "@/lib/errors";
 import {
   executeEscrowGatewayAction,
-  looksLikeOnChainTxHash
+  readEscrowPaymentState
 } from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
+import {
+  assertValidSellerCallbackSignature,
+  SellerCallbackSignatureError
+} from "@/lib/seller-callback-auth";
 import {
   loadJobSnapshot,
   logJobEvent,
   parseCompleteJobBody,
+  recordJobPaymentTransition,
   setSellerIdleAfterExecution,
   updateJobStatusForSeller
 } from "@/lib/jobs";
@@ -87,46 +92,39 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  let updatedJob;
-
   try {
-    updatedJob = await updateJobStatusForSeller({
+    await assertValidSellerCallbackSignature({
+      action: "complete",
       jobId: id,
       sellerId: completeRequest.seller_id,
-      expectedStatus: "running",
-      nextStatus: "done",
-      result: completeRequest.result
+      signature: completeRequest.seller_signature,
+      signedAt: completeRequest.seller_signed_at,
+      rpcUrl: env.KITE_RPC_URL
     });
   } catch (error) {
+    if (error instanceof SellerCallbackSignatureError) {
+      return forbiddenResponse(error.message, error.code);
+    }
+
     return internalServerErrorResponse(
-      "Failed to mark job as done.",
-      "JOB_COMPLETE_FAILED",
-      { reason: error instanceof Error ? error.message : "Unknown job complete error." }
+      "Failed to verify seller callback signature.",
+      "SELLER_SIGNATURE_CHECK_FAILED",
+      { reason: error instanceof Error ? error.message : "Unknown signature error." }
     );
   }
 
-  if (!updatedJob) {
-    return conflictResponse(
-      "Job could not be completed because its state changed concurrently.",
-      "INVALID_JOB_STATE"
-    );
-  }
-
+  let updatedJob;
   let releaseStatus:
     | {
         status: "released";
-        tx_hash: string;
+        tx_hash: string | null;
       }
     | {
         status: "skipped";
         reason: "mock_payment";
-      }
-    | {
-        status: "failed";
-        error: string;
       };
 
-  if (!jobSnapshot.tx_hash || !looksLikeOnChainTxHash(jobSnapshot.tx_hash)) {
+  if (jobSnapshot.payment_mode !== "x402-escrow") {
     releaseStatus = {
       status: "skipped",
       reason: "mock_payment"
@@ -151,7 +149,7 @@ export async function POST(request: Request, context: RouteContext) {
         action: "release",
         paymentId: jobSnapshot.payment_id,
         rpcUrl: env.KITE_RPC_URL,
-        escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
+        escrowAddress: jobSnapshot.escrow_contract_address ?? env.ESCROW_CONTRACT_ADDRESS,
         gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
       });
 
@@ -176,31 +174,99 @@ export async function POST(request: Request, context: RouteContext) {
     } catch (error) {
       const releaseErrorMessage =
         error instanceof Error ? error.message : "Unknown escrow release error.";
-
-      releaseStatus = {
-        status: "failed",
-        error: releaseErrorMessage
-      };
-
-      console.error("Failed to release escrow after job completion", {
-        jobId: id,
+      const escrowPaymentState = await readEscrowPaymentState({
         paymentId: jobSnapshot.payment_id,
-        reason: releaseErrorMessage
-      });
-
-      try {
-        await logJobEvent({
-          jobId: id,
-          type: "RELEASE_FAILED",
-          message: `Escrow release failed for payment ${jobSnapshot.payment_id}: ${releaseErrorMessage}`
-        });
-      } catch (eventError) {
-        console.error("Failed to log release failure event", {
+        rpcUrl: env.KITE_RPC_URL,
+        escrowAddress: jobSnapshot.escrow_contract_address ?? env.ESCROW_CONTRACT_ADDRESS
+      }).catch((stateError) => {
+        console.error("Failed to read escrow state after release failure", {
           jobId: id,
           paymentId: jobSnapshot.payment_id,
-          reason: eventError instanceof Error ? eventError.message : "Unknown event error."
+          reason:
+            stateError instanceof Error ? stateError.message : "Unknown escrow state error."
         });
+
+        return null;
+      });
+
+      if (escrowPaymentState === "released") {
+        releaseStatus = {
+          status: "released",
+          tx_hash: null
+        };
+
+        console.warn("Escrow payment was already released; reconciling job state", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: releaseErrorMessage
+        });
+      } else {
+
+        console.error("Failed to release escrow after job completion", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: releaseErrorMessage
+        });
+
+        try {
+          await logJobEvent({
+            jobId: id,
+            type: "RELEASE_FAILED",
+            message: `Escrow release failed for payment ${jobSnapshot.payment_id}: ${releaseErrorMessage}`
+          });
+        } catch (eventError) {
+          console.error("Failed to log release failure event", {
+            jobId: id,
+            paymentId: jobSnapshot.payment_id,
+            reason: eventError instanceof Error ? eventError.message : "Unknown event error."
+          });
+        }
+
+        return internalServerErrorResponse(
+          "Failed to release escrow after job completion.",
+          "ESCROW_RELEASE_FAILED",
+          { reason: releaseErrorMessage }
+        );
       }
+    }
+  }
+
+  try {
+    updatedJob = await updateJobStatusForSeller({
+      jobId: id,
+      sellerId: completeRequest.seller_id,
+      expectedStatus: "running",
+      nextStatus: "done",
+      result: completeRequest.result
+    });
+  } catch (error) {
+    return internalServerErrorResponse(
+      "Failed to mark job as done.",
+      "JOB_COMPLETE_FAILED",
+      { reason: error instanceof Error ? error.message : "Unknown job complete error." }
+    );
+  }
+
+  if (!updatedJob) {
+    return conflictResponse(
+      "Job could not be completed because its state changed concurrently.",
+      "INVALID_JOB_STATE"
+    );
+  }
+
+  if (releaseStatus.status === "released") {
+    try {
+      await recordJobPaymentTransition({
+        jobId: id,
+        paymentStatus: "released",
+        releaseTxHash: releaseStatus.tx_hash ?? undefined
+      });
+    } catch (error) {
+      console.error("Failed to record escrow release tx", {
+        jobId: id,
+        paymentId: jobSnapshot.payment_id,
+        reason: error instanceof Error ? error.message : "Unknown payment record error."
+      });
     }
   }
 

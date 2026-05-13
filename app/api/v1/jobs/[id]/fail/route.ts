@@ -8,13 +8,18 @@ import {
 } from "@/lib/errors";
 import {
   executeEscrowGatewayAction,
-  looksLikeOnChainTxHash
+  readEscrowPaymentState
 } from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
+import {
+  assertValidSellerCallbackSignature,
+  SellerCallbackSignatureError
+} from "@/lib/seller-callback-auth";
 import {
   loadJobSnapshot,
   logJobEvent,
   parseFailJobBody,
+  recordJobPaymentTransition,
   setSellerIdleAfterExecution,
   updateJobStatusForSeller
 } from "@/lib/jobs";
@@ -87,7 +92,143 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  try {
+    await assertValidSellerCallbackSignature({
+      action: "fail",
+      jobId: id,
+      sellerId: failRequest.seller_id,
+      signature: failRequest.seller_signature,
+      signedAt: failRequest.seller_signed_at,
+      rpcUrl: env.KITE_RPC_URL
+    });
+  } catch (error) {
+    if (error instanceof SellerCallbackSignatureError) {
+      return forbiddenResponse(error.message, error.code);
+    }
+
+    return internalServerErrorResponse(
+      "Failed to verify seller callback signature.",
+      "SELLER_SIGNATURE_CHECK_FAILED",
+      { reason: error instanceof Error ? error.message : "Unknown signature error." }
+    );
+  }
+
   let updatedJob;
+  let refundStatus:
+    | {
+        status: "refunded";
+        tx_hash: string | null;
+      }
+    | {
+        status: "skipped";
+        reason: "mock_payment";
+      };
+
+  if (jobSnapshot.payment_mode !== "x402-escrow") {
+    refundStatus = {
+      status: "skipped",
+      reason: "mock_payment"
+    };
+
+    try {
+      await logJobEvent({
+        jobId: id,
+        type: "REFUND_SKIPPED",
+        message: `Escrow refund skipped for mock payment ${jobSnapshot.payment_id}.`
+      });
+    } catch (error) {
+      console.error("Failed to log skipped refund event", {
+        jobId: id,
+        paymentId: jobSnapshot.payment_id,
+        reason: error instanceof Error ? error.message : "Unknown event error."
+      });
+    }
+  } else {
+    try {
+      const refund = await executeEscrowGatewayAction({
+        action: "refund",
+        paymentId: jobSnapshot.payment_id,
+        rpcUrl: env.KITE_RPC_URL,
+        escrowAddress: jobSnapshot.escrow_contract_address ?? env.ESCROW_CONTRACT_ADDRESS,
+        gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+      });
+
+      refundStatus = {
+        status: "refunded",
+        tx_hash: refund.txHash
+      };
+
+      try {
+        await logJobEvent({
+          jobId: id,
+          type: "REFUNDED",
+          message: `Escrow refunded payment ${jobSnapshot.payment_id} for job ${id}.`
+        });
+      } catch (error) {
+        console.error("Failed to log refund event", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: error instanceof Error ? error.message : "Unknown event error."
+        });
+      }
+    } catch (error) {
+      const refundErrorMessage =
+        error instanceof Error ? error.message : "Unknown escrow refund error.";
+      const escrowPaymentState = await readEscrowPaymentState({
+        paymentId: jobSnapshot.payment_id,
+        rpcUrl: env.KITE_RPC_URL,
+        escrowAddress: jobSnapshot.escrow_contract_address ?? env.ESCROW_CONTRACT_ADDRESS
+      }).catch((stateError) => {
+        console.error("Failed to read escrow state after refund failure", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason:
+            stateError instanceof Error ? stateError.message : "Unknown escrow state error."
+        });
+
+        return null;
+      });
+
+      if (escrowPaymentState === "refunded") {
+        refundStatus = {
+          status: "refunded",
+          tx_hash: null
+        };
+
+        console.warn("Escrow payment was already refunded; reconciling job state", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: refundErrorMessage
+        });
+      } else {
+        console.error("Failed to refund escrow after job failure", {
+          jobId: id,
+          paymentId: jobSnapshot.payment_id,
+          reason: refundErrorMessage
+        });
+
+        try {
+          await logJobEvent({
+            jobId: id,
+            type: "REFUND_FAILED",
+            message: `Escrow refund failed for payment ${jobSnapshot.payment_id}: ${refundErrorMessage}`
+          });
+        } catch (eventError) {
+          console.error("Failed to log refund failure event", {
+            jobId: id,
+            paymentId: jobSnapshot.payment_id,
+            reason: eventError instanceof Error ? eventError.message : "Unknown event error."
+          });
+        }
+
+        return internalServerErrorResponse(
+          "Failed to refund escrow after job failure.",
+          "ESCROW_REFUND_FAILED",
+          { reason: refundErrorMessage }
+        );
+      }
+    }
+  }
 
   try {
     updatedJob = await updateJobStatusForSeller({
@@ -114,95 +255,19 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  let refundStatus:
-    | {
-        status: "refunded";
-        tx_hash: string;
-      }
-    | {
-        status: "skipped";
-        reason: "mock_payment";
-      }
-    | {
-        status: "failed";
-        error: string;
-      };
-
-  if (!jobSnapshot.tx_hash || !looksLikeOnChainTxHash(jobSnapshot.tx_hash)) {
-    refundStatus = {
-      status: "skipped",
-      reason: "mock_payment"
-    };
-
+  if (refundStatus.status === "refunded") {
     try {
-      await logJobEvent({
+      await recordJobPaymentTransition({
         jobId: id,
-        type: "REFUND_SKIPPED",
-        message: `Escrow refund skipped for mock payment ${jobSnapshot.payment_id}.`
+        paymentStatus: "refunded",
+        refundTxHash: refundStatus.tx_hash ?? undefined
       });
     } catch (error) {
-      console.error("Failed to log skipped refund event", {
+      console.error("Failed to record escrow refund tx", {
         jobId: id,
         paymentId: jobSnapshot.payment_id,
-        reason: error instanceof Error ? error.message : "Unknown event error."
+        reason: error instanceof Error ? error.message : "Unknown payment record error."
       });
-    }
-  } else {
-    try {
-      const refund = await executeEscrowGatewayAction({
-        action: "refund",
-        paymentId: jobSnapshot.payment_id,
-        rpcUrl: env.KITE_RPC_URL,
-        escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-        gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
-      });
-
-      refundStatus = {
-        status: "refunded",
-        tx_hash: refund.txHash
-      };
-
-      try {
-        await logJobEvent({
-          jobId: id,
-          type: "REFUNDED",
-          message: `Escrow refunded payment ${jobSnapshot.payment_id} for job ${id}.`
-        });
-      } catch (error) {
-        console.error("Failed to log refund event", {
-          jobId: id,
-          paymentId: jobSnapshot.payment_id,
-          reason: error instanceof Error ? error.message : "Unknown event error."
-        });
-      }
-    } catch (error) {
-      const refundErrorMessage =
-        error instanceof Error ? error.message : "Unknown escrow refund error.";
-
-      refundStatus = {
-        status: "failed",
-        error: refundErrorMessage
-      };
-
-      console.error("Failed to refund escrow after job failure", {
-        jobId: id,
-        paymentId: jobSnapshot.payment_id,
-        reason: refundErrorMessage
-      });
-
-      try {
-        await logJobEvent({
-          jobId: id,
-          type: "REFUND_FAILED",
-          message: `Escrow refund failed for payment ${jobSnapshot.payment_id}: ${refundErrorMessage}`
-        });
-      } catch (eventError) {
-        console.error("Failed to log refund failure event", {
-          jobId: id,
-          paymentId: jobSnapshot.payment_id,
-          reason: eventError instanceof Error ? eventError.message : "Unknown event error."
-        });
-      }
     }
   }
 

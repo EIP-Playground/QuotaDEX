@@ -1684,6 +1684,16 @@ a {
   font-size: 11px;
 }
 
+.demoReceiptLink {
+  color: var(--olive);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.demoReceiptLink:hover {
+  color: var(--text);
+}
+
 .demoStatus-done    { color: var(--olive); font-weight: 600; font-family: var(--ffm); }
 .demoStatus-running { color: var(--gold);  font-weight: 600; font-family: var(--ffm); }
 .demoStatus-failed  { color: #a64b1a;      font-weight: 600; font-family: var(--ffm); }

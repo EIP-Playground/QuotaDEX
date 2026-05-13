@@ -4,7 +4,7 @@
 
 **首个去中心化 AI 算力市场——为 Agent 而生，链上结算。**
 
-QuotaDEX 是一个 Agent 对 Agent（A2A）的 AI 算力二级市场。任何 LLM 卖家都可以将闲置配额变现，任何自主 Agent 都可以按需购买算力——无需 API 密钥、无需合同、无需人工介入。每笔任务通过 HTTP 402 报价、由 Kite AI 上的自定义 Escrow 合约担保，以 PYUSD 结算，并提供可在区块浏览器验证的链上证明。
+QuotaDEX 是一个 Agent 对 Agent（A2A）的 AI 算力二级市场。任何 LLM 卖家都可以将闲置配额变现，任何自主 Agent 都可以按需购买算力——无需 API 密钥、无需合同、无需人工介入。每笔任务通过 HTTP 402 报价，使用 Kite Agent Passport/x402 付款，由 Kite AI 上的自定义 Escrow 合约担保，并在 Kite Testnet 以 Test USDT 结算。
 
 是 **AgentBazaar** 愿景的第一步：为自主 Agent 经济构建开放、可问责的商业结算层。
 
@@ -33,7 +33,7 @@ QuotaDEX 用三个原语解决这一问题：
 | 原语 | 作用 |
 | --- | --- |
 | **x402 报价** | Buyer Agent 请求算力；Gateway 对请求指纹化，预留卖家，以 `402 Payment Required` 返回 `payment_id` 和报价 |
-| **Kite 托管** | Buyer 将 PYUSD 存入链上 Escrow 合约；任务完成后 Gateway 释放资金，失败则自动退款 |
+| **Kite x402 托管** | Buyer 通过 Passport 授权 x402 支付到 Escrow 合约；任务完成后 Gateway 释放资金，失败则自动退款 |
 | **A2A 结算** | Seller 通过 Supabase Realtime 接收任务、执行任务，回调触发链上结算 |
 
 ---
@@ -46,8 +46,8 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
      │──POST /jobs/quote────────────▶│                               │
      │◀──402 { payment_id, price }───│                               │
      │                               │                               │
-     │  [链上 approve + deposit]      │                               │
-     │──POST /jobs/verify───────────▶│                               │
+     │  [Kite Passport approve]      │                               │
+     │──POST /jobs/verify X-PAYMENT─▶│                               │
      │◀──200 { job_id }──────────────│                               │
      │                               │──Realtime 推送───────────────▶│
      │                               │◀─POST /jobs/:id/start─────────│
@@ -57,8 +57,8 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
 ```
 
 1. **报价** — Buyer 调用 `/jobs/quote`。Gateway 对请求进行指纹化，预留一个可用 Seller，将报价上下文缓存到 Redis，并以 `402` 返回价格和 `payment_id`。
-2. **存款** — Buyer 授权 PYUSD 额度后，在 Kite 上调用 `Escrow.deposit(paymentId, seller, amount)`。
-3. **验证** — Buyer 携带链上回执调用 `/jobs/verify`。Gateway 验证存款，创建正式的 `paid` 任务，将 Seller 状态改为 `busy`。
+2. **授权** — Buyer 使用 Kite Agent Passport 授权返回的 x402 `accepts[0]`，其中 `payTo` 必须是 Escrow 合约。
+3. **验证** — Buyer 携带 `X-PAYMENT` 调用 `/jobs/verify`。Gateway 调 Pieverse verify/settle，确认 token Transfer 已进入 Escrow，再在合约中登记付款，创建正式的 `paid` 任务，将 Seller 状态改为 `busy`。
 4. **执行** — Seller 通过 Supabase Realtime 接收任务，执行后依次回调 `start → complete`（或 `fail`）。
 5. **结算** — 收到 `complete` 时，Gateway 调用 `Escrow.release(paymentId)`；收到 `fail` 时，调用 `Escrow.refund(paymentId)`。
 
@@ -86,7 +86,7 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
      ┌───────▼──────────────┐
      │   Kite AI (EVM)      │
      │  QuotaDEXEscrow.sol  │
-     │  PYUSD 支付          │
+     │  Test USDT 支付      │
      └──────────────────────┘
 ```
 
@@ -97,6 +97,7 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
 - Supabase 是所有正式状态转换的唯一真相来源。
 - Redis 仅存储短生命周期的报价上下文（有 TTL 限制）。
 - Seller 状态转换严格通过 Gateway API 进行，不允许客户端直接写入。
+- Gateway 是受信 escrow executor：负责校验 x402 settlement receipt，并调用合约 release/refund。
 
 ---
 
@@ -122,10 +123,13 @@ lib/
 supabase/
   migrations/         # sellers, jobs, events 表结构
 contracts/
-  QuotaDEXEscrow.sol  # Solidity 合约：deposit, release, refund
+  QuotaDEXEscrow.sol  # Solidity 合约：x402 register, release, refund
 scripts/
   seller-worker.mjs   # 本地 Seller 演示（注册→监听→完成）
   buyer-demo.mjs      # 本地 Buyer 演示（报价→存款→验证→等待结果）
+skills/
+  quotadex-buyer/     # 英文 Buyer Agent workflow：Passport + x402
+  quotadex-seller/    # 英文 Seller Agent workflow：Passport identity
 docs/                 # 产品规格、MVP 规则、开发顺序、阶段追踪
 ```
 
@@ -145,12 +149,15 @@ docs/                 # 产品规格、MVP 规则、开发顺序、阶段追踪
 
 | 方法   | 路径                           | 说明                                               |
 | ------ | ------------------------------ | -------------------------------------------------- |
-| `POST` | `/api/v1/jobs/quote`           | 获取报价；返回 `402`，含 `payment_id` 与价格        |
-| `POST` | `/api/v1/jobs/verify`          | 提交链上回执；创建已支付任务                        |
+| `POST` | `/api/v1/jobs/quote`           | 获取报价；返回 `402`，含 x402 `accepts` 与 escrow 支付信息 |
+| `POST` | `/api/v1/jobs/verify`          | 提交 `X-PAYMENT`；结算 x402、登记 escrow payment、创建已支付任务 |
 | `GET`  | `/api/v1/jobs/:id`             | 轮询任务状态（Realtime 的降级方案）                 |
 | `POST` | `/api/v1/jobs/:id/start`       | Seller 通知任务已开始                               |
 | `POST` | `/api/v1/jobs/:id/complete`    | Seller 通知任务完成；触发 `Escrow.release`           |
 | `POST` | `/api/v1/jobs/:id/fail`        | Seller 通知任务失败；触发 `Escrow.refund`            |
+
+Seller 任务回调必须携带 `seller_signature` 和 `seller_signed_at`。
+签名内容包含 `action`、`job_id`、`seller_id` 和 `signed_at`，具体消息格式见 `skills/quotadex-seller/SKILL.md`。
 
 ### 数据面板
 
@@ -180,22 +187,29 @@ UPSTASH_REDIS_REST_TOKEN=
 GATEWAY_SALT=                           # 用于指纹生成的随机密钥
 
 # Kite AI / 区块链
-KITE_RPC_URL=                           # Kite 网络 RPC 地址
+KITE_NETWORK=kite-testnet
+KITE_CHAIN_ID=2368
+KITE_RPC_URL=https://rpc-testnet.gokite.ai
+KITE_EXPLORER_URL=https://testnet.kitescan.ai
 ESCROW_CONTRACT_ADDRESS=                # 已部署的 QuotaDEXEscrow 合约地址
 GATEWAY_PRIVATE_KEY=                    # Gateway 钱包私钥（不是合约私钥）
-PYUSD_CONTRACT_ADDRESS=                 # PYUSD Token 合约地址
-PYUSD_DECIMALS=6                        # Token 精度（默认 6）
 
-# Pieverse Facilitator（未来 / 可选）
+# Payment asset / x402 facilitator
 PIEVERSE_FACILITATOR_BASE_URL=https://facilitator.pieverse.io
-KITE_PAYMENT_ASSET_ADDRESS=
-GATEWAY_MERCHANT_WALLET=
+KITE_PAYMENT_ASSET_ADDRESS=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63
+PAYMENT_TOKEN_DECIMALS=18
+PAYMENT_CURRENCY=USDT
+ALLOW_MOCK_PAYMENTS=false
 
-# Buyer 演示脚本（可选）
-BUYER_PRIVATE_KEY=                      # Buyer 钱包私钥，用于真实 approve + deposit
+# 一键 Kite Testnet Demo。这些钱包只花费和接收测试网 USDT。
+BUYER_PRIVATE_KEY=
+DEMO_SELLER_PRIVATE_KEY=
+DEMO_PRICE_PER_TASK=0.001
+DEMO_RATE_LIMIT=3
 ```
 
 > `GATEWAY_PRIVATE_KEY` 是 Gateway 控制的普通钱包私钥，不是合约地址的私钥。合约没有私钥。
+> 公开 `/demo` 页面只会在服务端使用 `BUYER_PRIVATE_KEY` 和 `DEMO_SELLER_PRIVATE_KEY`，不要把它们暴露给浏览器。
 
 ---
 
@@ -226,11 +240,12 @@ pnpm dev
 # 终端 2 — 启动 Seller Worker
 node scripts/seller-worker.mjs
 
-# 终端 3 — 运行 Buyer 演示（Mock 支付）
-node scripts/buyer-demo.mjs
+# Agent workflow docs
+cat skills/quotadex-buyer/SKILL.md
+cat skills/quotadex-seller/SKILL.md
 ```
 
-如需运行真实链上流程，设置 `BUYER_PAYMENT_MODE=escrow` 并提供 `BUYER_PRIVATE_KEY`。
+生产验证默认要求 `X-PAYMENT`。只有本地 demo 才应设置 `ALLOW_MOCK_PAYMENTS=true`。
 
 ---
 
@@ -244,22 +259,22 @@ node scripts/buyer-demo.mjs
 | Supabase Schema（sellers, jobs, events）            | 已完成        |
 | Seller 生命周期（register / heartbeat / offline）   | 已完成        |
 | Quote + 指纹 + Redis 缓存                           | 已完成        |
-| Verify（Mock 降级）                                 | 已完成        |
+| Verify（Kite x402 + escrow registration）           | 已完成        |
 | Seller Worker 脚本                                  | 已完成        |
 | Buyer 演示脚本                                      | 已完成        |
-| Kite 自定义 Escrow（deposit / release / refund）    | 已完成        |
+| Kite 自定义 Escrow（x402 register / release / refund） | 已完成     |
 | Mock E2E 端到端验证                                 | 已完成        |
-| Escrow 真实链路演示强化                             | **进行中**    |
+| Buyer/Seller Passport Skills                        | 已完成        |
 
-当前主要支付路线：**Kite 自定义 Escrow**
-稳定降级方案：**Mock 支付流**
+当前主要支付路线：**Kite x402 → QuotaDEXEscrow → Seller/Buyer**
+本地降级方案：**只有显式开启时才允许 Mock payment**
 
 ---
 
 ## 路线图
 
-- [ ] Pieverse Facilitator 集成（`X-PAYMENT` header 流程）
-- [ ] Agent Passport（去中心化 Agent 身份）
+- [x] Pieverse Facilitator 集成（`X-PAYMENT` header 流程）
+- [x] Agent Passport（去中心化 Agent 身份 workflow）
 - [ ] Kite MCP 集成
 - [ ] 生产环境真实 x402 支付头
 - [ ] Buyer SDK
@@ -273,5 +288,5 @@ node scripts/buyer-demo.mjs
 
 - **AgentBazaar** — 计划中的父级市场，托管多个 A2A 垂直场景，共享同一套报价-托管-结算的可问责层。
 - **Kite AI** — 用于链上结算的 EVM 兼容链。
-- **PYUSD** — 所有 Escrow 交易使用的支付 Token。
+- **Test USDT** — Kite Testnet 上当前使用的 escrow 支付 Token。
 - **x402** — 用于机器原生支付协商的 HTTP 支付协议。

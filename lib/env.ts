@@ -8,14 +8,18 @@ type ServerEnv = PublicEnv & {
   UPSTASH_REDIS_REST_URL: string;
   UPSTASH_REDIS_REST_TOKEN: string;
   GATEWAY_SALT: string;
+  KITE_NETWORK: string;
+  KITE_CHAIN_ID: string;
   KITE_RPC_URL: string;
+  KITE_EXPLORER_URL: string;
   PIEVERSE_FACILITATOR_BASE_URL: string;
+  GATEWAY_PUBLIC_BASE_URL: string;
   KITE_PAYMENT_ASSET_ADDRESS: string;
-  GATEWAY_MERCHANT_WALLET: string;
-  PYUSD_CONTRACT_ADDRESS: string;
-  PYUSD_DECIMALS: string;
+  PAYMENT_TOKEN_DECIMALS: string;
+  PAYMENT_CURRENCY: string;
   ESCROW_CONTRACT_ADDRESS: string;
   GATEWAY_PRIVATE_KEY: string;
+  ALLOW_MOCK_PAYMENTS: string;
 };
 
 function requireEnv(name: string): string {
@@ -26,6 +30,12 @@ function requireEnv(name: string): string {
   }
 
   return value;
+}
+
+function optionalEnv(name: string, defaultValue: string): string {
+  const value = process.env[name];
+
+  return value && value.trim() !== "" ? value : defaultValue;
 }
 
 export function getPublicEnv(): PublicEnv {
@@ -42,13 +52,23 @@ export function getServerEnv(): ServerEnv {
     UPSTASH_REDIS_REST_URL: requireEnv("UPSTASH_REDIS_REST_URL"),
     UPSTASH_REDIS_REST_TOKEN: requireEnv("UPSTASH_REDIS_REST_TOKEN"),
     GATEWAY_SALT: requireEnv("GATEWAY_SALT"),
-    KITE_RPC_URL: requireEnv("KITE_RPC_URL"),
-    PIEVERSE_FACILITATOR_BASE_URL: requireEnv("PIEVERSE_FACILITATOR_BASE_URL"),
+    KITE_NETWORK: optionalEnv("KITE_NETWORK", "kite-testnet"),
+    KITE_CHAIN_ID: optionalEnv("KITE_CHAIN_ID", "2368"),
+    KITE_RPC_URL: optionalEnv("KITE_RPC_URL", "https://rpc-testnet.gokite.ai"),
+    KITE_EXPLORER_URL: optionalEnv("KITE_EXPLORER_URL", "https://testnet.kitescan.ai"),
+    PIEVERSE_FACILITATOR_BASE_URL: optionalEnv(
+      "PIEVERSE_FACILITATOR_BASE_URL",
+      "https://facilitator.pieverse.io"
+    ),
+    GATEWAY_PUBLIC_BASE_URL: optionalEnv(
+      "GATEWAY_PUBLIC_BASE_URL",
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"
+    ),
     KITE_PAYMENT_ASSET_ADDRESS: requireEnv("KITE_PAYMENT_ASSET_ADDRESS"),
-    GATEWAY_MERCHANT_WALLET: requireEnv("GATEWAY_MERCHANT_WALLET"),
-    PYUSD_CONTRACT_ADDRESS: requireEnv("PYUSD_CONTRACT_ADDRESS"),
-    PYUSD_DECIMALS: requireEnv("PYUSD_DECIMALS"),
+    PAYMENT_TOKEN_DECIMALS: optionalEnv("PAYMENT_TOKEN_DECIMALS", "18"),
+    PAYMENT_CURRENCY: optionalEnv("PAYMENT_CURRENCY", "USDT"),
     ESCROW_CONTRACT_ADDRESS: requireEnv("ESCROW_CONTRACT_ADDRESS"),
-    GATEWAY_PRIVATE_KEY: requireEnv("GATEWAY_PRIVATE_KEY")
+    GATEWAY_PRIVATE_KEY: requireEnv("GATEWAY_PRIVATE_KEY"),
+    ALLOW_MOCK_PAYMENTS: optionalEnv("ALLOW_MOCK_PAYMENTS", "false")
   };
 }
