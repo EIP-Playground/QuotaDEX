@@ -6,7 +6,7 @@ import {
 } from "@/lib/errors";
 import { getServerEnv } from "@/lib/env";
 import {
-  assertValidSellerCallbackSignature,
+  assertValidSellerCallbackAuth,
   SellerCallbackSignatureError
 } from "@/lib/seller-callback-auth";
 import { createServerSupabaseClient } from "@/lib/supabase";
@@ -99,13 +99,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    await assertValidSellerCallbackSignature({
+    await assertValidSellerCallbackAuth({
       action: "poll",
       jobId: "seller-jobs",
       sellerId: jobsRequest.seller_id,
       signature: jobsRequest.seller_signature,
       signedAt: jobsRequest.seller_signed_at,
-      rpcUrl: env.KITE_RPC_URL
+      rpcUrl: env.KITE_RPC_URL,
+      authorizationHeader: request.headers.get("authorization"),
+      gatewaySecret: env.GATEWAY_SALT,
+      allowLegacySignatureAuth: env.ALLOW_SELLER_SIGNATURE_AUTH === "true"
     });
   } catch (error) {
     if (error instanceof SellerCallbackSignatureError) {

@@ -142,8 +142,9 @@ docs/                 # 产品规格、MVP 规则、开发顺序、阶段追踪
 | 方法   | 路径                           | 说明                              |
 | ------ | ------------------------------ | --------------------------------- |
 | `POST` | `/api/v1/sellers/register`     | 注册 Seller，指定能力与价格        |
-| `POST` | `/api/v1/sellers/heartbeat`    | 保持 Seller 状态为 `online`        |
-| `POST` | `/api/v1/sellers/offline`      | 将 Seller 标记为下线               |
+| `POST` | `/api/v1/sellers/session`      | 用已验证的 Passport 身份换取短期 Gateway seller session |
+| `POST` | `/api/v1/sellers/heartbeat`    | 将已认证 seller session 标记为 `idle` / online |
+| `POST` | `/api/v1/sellers/offline`      | 将已认证 seller session 标记为下线 |
 
 ### 任务流程
 
@@ -156,8 +157,10 @@ docs/                 # 产品规格、MVP 规则、开发顺序、阶段追踪
 | `POST` | `/api/v1/jobs/:id/complete`    | Seller 通知任务完成；触发 `Escrow.release`           |
 | `POST` | `/api/v1/jobs/:id/fail`        | Seller 通知任务失败；触发 `Escrow.refund`            |
 
-Seller 任务回调必须携带 `seller_signature` 和 `seller_signed_at`。
-签名内容包含 `action`、`job_id`、`seller_id` 和 `signed_at`，具体消息格式见 `skills/quotadex-seller/SKILL.md`。
+Seller 任务回调优先使用 Gateway seller session：先通过 `/api/v1/sellers/session`
+验证 Passport JWT，再在 heartbeat、poll、start、complete、fail、offline 请求里携带
+`Authorization: Bearer <seller_session_token>`。旧的 EVM `seller_signature`
+仅作为开发兼容路径保留。
 
 ### 数据面板
 
@@ -185,6 +188,8 @@ UPSTASH_REDIS_REST_TOKEN=
 
 # Gateway 配置 — 仅限服务端
 GATEWAY_SALT=                           # 用于指纹生成的随机密钥
+SELLER_SESSION_TTL_SECONDS=900          # Gateway seller session 有效期
+ALLOW_SELLER_SIGNATURE_AUTH=false      # 仅本地 legacy EVM seller 签名使用
 
 # Kite AI / 区块链
 KITE_NETWORK=kite-testnet
@@ -193,6 +198,10 @@ KITE_RPC_URL=https://rpc-testnet.gokite.ai
 KITE_EXPLORER_URL=https://testnet.kitescan.ai
 ESCROW_CONTRACT_ADDRESS=                # 已部署的 QuotaDEXEscrow 合约地址
 GATEWAY_PRIVATE_KEY=                    # Gateway 钱包私钥（不是合约私钥）
+
+# Kite Passport identity verification for seller sessions
+KITE_PASSPORT_ISSUER=https://passport.prod.gokite.ai
+KITE_PASSPORT_JWKS_URL=https://passport.prod.gokite.ai/.well-known/jwks.json
 
 # Payment asset / x402 facilitator
 PIEVERSE_FACILITATOR_BASE_URL=https://facilitator.pieverse.io
@@ -246,6 +255,7 @@ cat skills/quotadex-seller/SKILL.md
 ```
 
 生产验证默认要求 `X-PAYMENT`。只有本地 demo 才应设置 `ALLOW_MOCK_PAYMENTS=true`。
+生产 seller callback 默认要求 Gateway seller session token。只有本地 legacy EVM seller worker 才应设置 `ALLOW_SELLER_SIGNATURE_AUTH=true`。
 
 ---
 

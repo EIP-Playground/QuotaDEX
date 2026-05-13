@@ -3,6 +3,7 @@ import {
   readEscrowPaymentState
 } from "@/lib/chain/escrow";
 import { buildSellerCallbackMessage } from "@/lib/seller-callback-auth";
+import { createSellerSessionToken } from "@/lib/seller-session";
 import {
   loadJobSnapshot,
   logJobEvent,
@@ -77,6 +78,7 @@ describe("seller job callbacks", () => {
       "0x4444444444444444444444444444444444444444";
     process.env.GATEWAY_PRIVATE_KEY =
       "0x1111111111111111111111111111111111111111111111111111111111111111";
+    process.env.ALLOW_SELLER_SIGNATURE_AUTH = "true";
 
     vi.mocked(loadJobSnapshot).mockResolvedValue(runningJob as never);
     vi.mocked(updateJobStatusForSeller).mockResolvedValue({
@@ -110,6 +112,21 @@ describe("seller job callbacks", () => {
     };
   }
 
+  async function sellerSessionHeader() {
+    const token = await createSellerSessionToken(
+      {
+        sellerId,
+        passportAgentId: "agent-seller-1",
+        passportSubject: "user_123"
+      },
+      "salt"
+    );
+
+    return {
+      authorization: `Bearer ${token}`
+    };
+  }
+
   it("rejects start without a seller signature", async () => {
     vi.mocked(loadJobSnapshot).mockResolvedValue({
       ...runningJob,
@@ -128,6 +145,40 @@ describe("seller job callbacks", () => {
     expect(response.status).toBe(403);
     expect(body.code).toBe("SELLER_SIGNATURE_INVALID");
     expect(updateJobStatusForSeller).not.toHaveBeenCalled();
+  });
+
+  it("starts a job with a Gateway seller session token instead of an EVM signature", async () => {
+    vi.mocked(loadJobSnapshot).mockResolvedValue({
+      ...runningJob,
+      status: "paid"
+    } as never);
+    vi.mocked(updateJobStatusForSeller).mockResolvedValue({
+      id: "job-1",
+      seller_id: sellerId,
+      status: "running",
+      result: null
+    });
+
+    const response = await startJob(
+      new Request("https://quotadex.test/api/v1/jobs/job-1/start", {
+        method: "POST",
+        headers: await sellerSessionHeader(),
+        body: JSON.stringify({ seller_id: sellerId })
+      }),
+      { params: Promise.resolve({ id: "job-1" }) }
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("running");
+    expect(updateJobStatusForSeller).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: "job-1",
+        sellerId,
+        expectedStatus: "paid",
+        nextStatus: "running"
+      })
+    );
   });
 
   it("rejects complete without a seller signature before escrow release", async () => {

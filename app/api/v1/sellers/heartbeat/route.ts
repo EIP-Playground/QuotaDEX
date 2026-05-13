@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import {
   badRequestResponse,
+  forbiddenResponse,
   internalServerErrorResponse,
   notFoundResponse
 } from "@/lib/errors";
+import { getServerEnv } from "@/lib/env";
+import {
+  assertValidSellerSession,
+  SellerSessionError
+} from "@/lib/seller-session";
 import { parseSellerIdentityBody } from "@/lib/sellers";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
@@ -27,10 +33,42 @@ export async function POST(request: Request) {
     );
   }
 
+  let env: ReturnType<typeof getServerEnv>;
+
+  try {
+    env = getServerEnv();
+  } catch (error) {
+    return internalServerErrorResponse(
+      "Missing Gateway configuration for seller heartbeat.",
+      "GATEWAY_CONFIG_MISSING",
+      { reason: error instanceof Error ? error.message : "Unknown config error." }
+    );
+  }
+
+  let sessionClaims: Awaited<ReturnType<typeof assertValidSellerSession>>;
+
+  try {
+    sessionClaims = await assertValidSellerSession({
+      sellerId: seller.seller_id,
+      authorizationHeader: request.headers.get("authorization"),
+      secret: env.GATEWAY_SALT
+    });
+  } catch (error) {
+    if (error instanceof SellerSessionError) {
+      return forbiddenResponse(error.message, error.code);
+    }
+
+    return internalServerErrorResponse(
+      "Failed to verify seller heartbeat session.",
+      "SELLER_SESSION_CHECK_FAILED",
+      { reason: error instanceof Error ? error.message : "Unknown session error." }
+    );
+  }
+
   const supabase = createServerSupabaseClient();
   const { data: existingSeller, error: readError } = await supabase
     .from("sellers")
-    .select("id, status")
+    .select("id, status, updated_at")
     .eq("id", seller.seller_id)
     .maybeSingle();
 
@@ -50,17 +88,32 @@ export async function POST(request: Request) {
     existingSeller.status === "busy" || existingSeller.status === "reserved"
       ? existingSeller.status
       : "idle";
+  const now = new Date().toISOString();
+  const heartbeatUpdate: {
+    status: string;
+    passport_agent_id?: string;
+    passport_payer_addr: string;
+    last_heartbeat_at: string;
+    updated_at?: string;
+  } = {
+    status: nextStatus,
+    passport_agent_id: sessionClaims.passportAgentId,
+    passport_payer_addr: sessionClaims.sellerId,
+    last_heartbeat_at: now
+  };
 
-  const { error: updateError } = await supabase
+  if (existingSeller.status !== "busy" && existingSeller.status !== "reserved") {
+    heartbeatUpdate.updated_at = now;
+  }
+
+  const { data: updatedSeller, error: updateError } = await supabase
     .from("sellers")
-    .update({
-      status: nextStatus,
-      passport_agent_id: seller.passport_agent_id ?? undefined,
-      passport_payer_addr: seller.passport_payer_addr ?? seller.seller_id,
-      last_heartbeat_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", seller.seller_id);
+    .update(heartbeatUpdate)
+    .eq("id", seller.seller_id)
+    .eq("status", existingSeller.status)
+    .eq("updated_at", existingSeller.updated_at)
+    .select("id, status")
+    .maybeSingle();
 
   if (updateError) {
     return internalServerErrorResponse(
@@ -68,6 +121,14 @@ export async function POST(request: Request) {
       "SELLER_HEARTBEAT_FAILED",
       { reason: updateError.message }
     );
+  }
+
+  if (!updatedSeller) {
+    return NextResponse.json({
+      status: "stale",
+      seller_id: seller.seller_id,
+      seller_status: "unchanged"
+    });
   }
 
   return NextResponse.json({

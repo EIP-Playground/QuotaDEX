@@ -8,7 +8,7 @@ import {
 } from "@/lib/errors";
 import { getServerEnv } from "@/lib/env";
 import {
-  assertValidSellerCallbackSignature,
+  assertValidSellerCallbackAuth,
   SellerCallbackSignatureError
 } from "@/lib/seller-callback-auth";
 import {
@@ -87,13 +87,16 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
-    await assertValidSellerCallbackSignature({
+    await assertValidSellerCallbackAuth({
       action: "start",
       jobId: id,
       sellerId: startRequest.seller_id,
       signature: startRequest.seller_signature,
       signedAt: startRequest.seller_signed_at,
-      rpcUrl: env.KITE_RPC_URL
+      rpcUrl: env.KITE_RPC_URL,
+      authorizationHeader: request.headers.get("authorization"),
+      gatewaySecret: env.GATEWAY_SALT,
+      allowLegacySignatureAuth: env.ALLOW_SELLER_SIGNATURE_AUTH === "true"
     });
   } catch (error) {
     if (error instanceof SellerCallbackSignatureError) {

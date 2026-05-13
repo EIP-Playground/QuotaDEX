@@ -12,7 +12,7 @@ import {
 } from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
 import {
-  assertValidSellerCallbackSignature,
+  assertValidSellerCallbackAuth,
   SellerCallbackSignatureError
 } from "@/lib/seller-callback-auth";
 import {
@@ -93,13 +93,16 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
-    await assertValidSellerCallbackSignature({
+    await assertValidSellerCallbackAuth({
       action: "fail",
       jobId: id,
       sellerId: failRequest.seller_id,
       signature: failRequest.seller_signature,
       signedAt: failRequest.seller_signed_at,
-      rpcUrl: env.KITE_RPC_URL
+      rpcUrl: env.KITE_RPC_URL,
+      authorizationHeader: request.headers.get("authorization"),
+      gatewaySecret: env.GATEWAY_SALT,
+      allowLegacySignatureAuth: env.ALLOW_SELLER_SIGNATURE_AUTH === "true"
     });
   } catch (error) {
     if (error instanceof SellerCallbackSignatureError) {

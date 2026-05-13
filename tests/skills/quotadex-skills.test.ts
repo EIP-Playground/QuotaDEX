@@ -32,7 +32,11 @@ describe("QuotaDEX agent skills", () => {
     expect(buyer).toMatch(/\/api\/v1\/jobs\/quote/);
     expect(buyer).toMatch(/\/api\/v1\/jobs\/verify/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/register/);
+    expect(seller).toMatch(/\/api\/v1\/sellers\/session/);
+    expect(seller).toMatch(/Authorization: Bearer \$SELLER_SESSION_TOKEN/);
+    expect(seller).toMatch(/heartbeat/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/jobs/);
-    expect(seller).toMatch(/action: poll/);
+    expect(seller).not.toMatch(/seller_signature/);
+    expect(seller).not.toMatch(/action: poll/);
   });
 });
