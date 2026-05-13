@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   badRequestResponse,
+  conflictResponse,
   forbiddenResponse,
   internalServerErrorResponse
 } from "@/lib/errors";
@@ -93,29 +94,62 @@ export async function POST(request: Request) {
     updated_at: updatedAt
   };
 
-  const writeResult = existingSellerRow?.passport_subject
-    ? await supabase
-        .from("sellers")
-        .update(sellerProfile)
-        .eq("id", seller.seller_id)
-    : await supabase.from("sellers").upsert(
-        {
-          id: seller.seller_id,
-          ...sellerProfile,
-          passport_agent_id: null,
-          passport_payer_addr: seller.seller_id,
-          approval_status: "approved"
-        },
-        {
-          onConflict: "id"
-        }
-      );
+  let writeError: { code?: string; message: string } | null = null;
+  let staleUnboundRegistration = false;
 
-  if (writeResult.error) {
+  if (existingSellerRow?.passport_subject) {
+    const { error } = await supabase
+      .from("sellers")
+      .update(sellerProfile)
+      .eq("id", seller.seller_id);
+
+    writeError = error;
+  } else if (existingSellerRow) {
+    const { data, error } = await supabase
+      .from("sellers")
+      .update({
+        ...sellerProfile,
+        passport_payer_addr: seller.seller_id,
+        approval_status: "approved"
+      })
+      .eq("id", seller.seller_id)
+      .is("passport_subject", null)
+      .select("id")
+      .maybeSingle();
+
+    writeError = error;
+    staleUnboundRegistration = !error && !data;
+  } else {
+    const { error } = await supabase.from("sellers").insert({
+      id: seller.seller_id,
+      ...sellerProfile,
+      passport_agent_id: null,
+      passport_payer_addr: seller.seller_id,
+      approval_status: "approved"
+    });
+
+    writeError = error;
+  }
+
+  if (staleUnboundRegistration) {
+    return conflictResponse(
+      "Seller Passport identity changed before registration could be updated.",
+      "SELLER_REGISTRATION_STALE"
+    );
+  }
+
+  if (writeError) {
+    if ("code" in writeError && writeError.code === "23505") {
+      return conflictResponse(
+        "Seller registration changed concurrently. Retry registration.",
+        "SELLER_REGISTRATION_STALE"
+      );
+    }
+
     return internalServerErrorResponse(
       "Failed to register seller.",
       "SELLER_REGISTER_FAILED",
-      { reason: writeResult.error.message }
+      { reason: writeError.message }
     );
   }
 

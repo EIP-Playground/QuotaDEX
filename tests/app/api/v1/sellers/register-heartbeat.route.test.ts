@@ -12,9 +12,26 @@ describe("seller lifecycle routes", () => {
   const eventInsert = vi.fn();
   const sellerUpsert = vi.fn();
   const sellerUpdate = vi.fn();
+  const sellerInsert = vi.fn();
   const sellerReadMaybeSingle = vi.fn();
+  const sellerUpdateMaybeSingle = vi.fn();
+  const sellerUpdateSelect = vi.fn(() => ({
+    maybeSingle: sellerUpdateMaybeSingle
+  }));
+  const sellerUpdateIs = vi.fn(() => ({
+    select: sellerUpdateSelect
+  }));
+  const sellerUpdateEqUpdatedAt = vi.fn(() => ({
+    select: sellerUpdateSelect
+  }));
+  const sellerUpdateEqStatus = vi.fn(() => ({
+    eq: sellerUpdateEqUpdatedAt
+  }));
   const sellerUpdateEq = vi.fn((): unknown => ({
-    select: () => ({ maybeSingle: vi.fn() })
+    is: sellerUpdateIs,
+    eq: sellerUpdateEqStatus,
+    select: sellerUpdateSelect,
+    error: null
   }));
   const sellerSelectEq = vi.fn(() => ({ maybeSingle: sellerReadMaybeSingle }));
   const sellerSelect = vi.fn(() => ({ eq: sellerSelectEq }));
@@ -25,6 +42,7 @@ describe("seller lifecycle routes", () => {
 
     return {
       upsert: sellerUpsert,
+      insert: sellerInsert,
       select: sellerSelect,
       update: sellerUpdate
     };
@@ -37,20 +55,32 @@ describe("seller lifecycle routes", () => {
 
     eventInsert.mockResolvedValue({ error: null });
     sellerUpsert.mockResolvedValue({ error: null });
+    sellerInsert.mockResolvedValue({ error: null });
     sellerReadMaybeSingle.mockResolvedValue({
       data: {
         id: sellerId,
-        status: "offline"
+        status: "offline",
+        updated_at: "2026-05-13T10:00:00.000Z"
+      },
+      error: null
+    });
+    sellerUpdateMaybeSingle.mockResolvedValue({
+      data: {
+        id: sellerId,
+        status: "idle"
       },
       error: null
     });
     sellerUpdate.mockReturnValue({ eq: sellerUpdateEq });
-    sellerUpdateEq.mockReturnValue({ error: null });
 
     vi.mocked(createServerSupabaseClient).mockReturnValue({ from } as never);
   });
 
   it("registers a seller profile as offline until the worker heartbeats", async () => {
+    sellerReadMaybeSingle.mockResolvedValue({
+      data: null,
+      error: null
+    });
     const response = await registerSeller(
       new Request("https://quotadex.test/api/v1/sellers/register", {
         method: "POST",
@@ -68,14 +98,13 @@ describe("seller lifecycle routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.status).toBe("registered");
-    expect(sellerUpsert).toHaveBeenCalledWith(
+    expect(sellerInsert).toHaveBeenCalledWith(
       expect.objectContaining({
         id: sellerId,
         passport_agent_id: null,
         status: "offline",
         last_heartbeat_at: null
-      }),
-      { onConflict: "id" }
+      })
     );
     expect(eventInsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -140,13 +169,20 @@ describe("seller lifecycle routes", () => {
         last_heartbeat_at: expect.any(String)
       })
     );
+    expect(sellerUpdateEq).toHaveBeenCalledWith("id", sellerId);
+    expect(sellerUpdateEqStatus).toHaveBeenCalledWith("status", "offline");
+    expect(sellerUpdateEqUpdatedAt).toHaveBeenCalledWith(
+      "updated_at",
+      "2026-05-13T10:00:00.000Z"
+    );
   });
 
   it("does not refresh updated_at while a reserved seller heartbeats", async () => {
     sellerReadMaybeSingle.mockResolvedValue({
       data: {
         id: sellerId,
-        status: "reserved"
+        status: "reserved",
+        updated_at: "2026-05-13T10:00:00.000Z"
       },
       error: null
     });
@@ -182,5 +218,83 @@ describe("seller lifecycle routes", () => {
         last_heartbeat_at: expect.any(String)
       })
     );
+  });
+
+  it("does not overwrite a seller reservation if heartbeat races with quote", async () => {
+    sellerReadMaybeSingle.mockResolvedValue({
+      data: {
+        id: sellerId,
+        status: "idle",
+        updated_at: "2026-05-13T10:00:00.000Z"
+      },
+      error: null
+    });
+    sellerUpdateMaybeSingle.mockResolvedValue({
+      data: null,
+      error: null
+    });
+    const token = await createSellerSessionToken(
+      {
+        sellerId,
+        passportAgentId: "agent-seller-1",
+        passportSubject: "user_123"
+      },
+      "seller-session-secret"
+    );
+    const response = await heartbeatSeller(
+      new Request("https://quotadex.test/api/v1/sellers/heartbeat", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          seller_id: sellerId
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      status: "stale",
+      seller_status: "unchanged"
+    });
+    expect(sellerUpdateEqStatus).toHaveBeenCalledWith("status", "idle");
+    expect(sellerUpdateEqUpdatedAt).toHaveBeenCalledWith(
+      "updated_at",
+      "2026-05-13T10:00:00.000Z"
+    );
+  });
+
+  it("does not overwrite an unbound seller if Passport binding wins the race", async () => {
+    sellerReadMaybeSingle.mockResolvedValue({
+      data: {
+        id: sellerId,
+        passport_subject: null
+      },
+      error: null
+    });
+    sellerUpdateMaybeSingle.mockResolvedValue({
+      data: null,
+      error: null
+    });
+    const response = await registerSeller(
+      new Request("https://quotadex.test/api/v1/sellers/register", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          wallet: sellerId,
+          passport_payer_addr: sellerId,
+          capability: "llama-3",
+          price_per_task: "0.001"
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("SELLER_REGISTRATION_STALE");
+    expect(sellerUpdateIs).toHaveBeenCalledWith("passport_subject", null);
+    expect(eventInsert).not.toHaveBeenCalled();
   });
 });

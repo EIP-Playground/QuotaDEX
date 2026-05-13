@@ -68,7 +68,7 @@ export async function POST(request: Request) {
   const supabase = createServerSupabaseClient();
   const { data: existingSeller, error: readError } = await supabase
     .from("sellers")
-    .select("id, status")
+    .select("id, status, updated_at")
     .eq("id", seller.seller_id)
     .maybeSingle();
 
@@ -106,10 +106,14 @@ export async function POST(request: Request) {
     heartbeatUpdate.updated_at = now;
   }
 
-  const { error: updateError } = await supabase
+  const { data: updatedSeller, error: updateError } = await supabase
     .from("sellers")
     .update(heartbeatUpdate)
-    .eq("id", seller.seller_id);
+    .eq("id", seller.seller_id)
+    .eq("status", existingSeller.status)
+    .eq("updated_at", existingSeller.updated_at)
+    .select("id, status")
+    .maybeSingle();
 
   if (updateError) {
     return internalServerErrorResponse(
@@ -117,6 +121,14 @@ export async function POST(request: Request) {
       "SELLER_HEARTBEAT_FAILED",
       { reason: updateError.message }
     );
+  }
+
+  if (!updatedSeller) {
+    return NextResponse.json({
+      status: "stale",
+      seller_id: seller.seller_id,
+      seller_status: "unchanged"
+    });
   }
 
   return NextResponse.json({
