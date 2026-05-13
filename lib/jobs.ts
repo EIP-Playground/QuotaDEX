@@ -53,6 +53,7 @@ type SellerCandidateRow = {
   price_per_task: string | number;
   status: "idle" | "reserved";
   updated_at: string;
+  last_heartbeat_at: string | null;
 };
 
 export type ReservedSeller = {
@@ -126,6 +127,7 @@ export class DuplicateVerificationError extends Error {
 
 const SELLER_CANDIDATE_BATCH_SIZE = 20;
 export const RESERVED_SELLER_TIMEOUT_SECONDS = 30;
+export const SELLER_HEARTBEAT_TTL_SECONDS = 60;
 export const QUOTE_CONTEXT_TTL_SECONDS = 300;
 export const QUOTE_CONTEXT_KEY_PREFIX = "quote";
 export const QUOTE_PAYMENT_MODE = "x402-escrow";
@@ -176,6 +178,12 @@ function getReservedSellerCutoff(now = new Date()): string {
   ).toISOString();
 }
 
+function getOnlineSellerCutoff(now = new Date()): string {
+  return new Date(
+    now.getTime() - SELLER_HEARTBEAT_TTL_SECONDS * 1000
+  ).toISOString();
+}
+
 async function listIdleSellerCandidates(
   capability: string
 ): Promise<SellerCandidateRow[]> {
@@ -183,9 +191,10 @@ async function listIdleSellerCandidates(
 
   const { data: idleCandidates, error: idleError } = await supabase
     .from("sellers")
-    .select("id, capability, price_per_task, status, updated_at")
+    .select("id, capability, price_per_task, status, updated_at, last_heartbeat_at")
     .eq("capability", capability)
     .eq("status", "idle")
+    .gte("last_heartbeat_at", getOnlineSellerCutoff())
     .order("updated_at", { ascending: false })
     .limit(SELLER_CANDIDATE_BATCH_SIZE);
 
@@ -204,10 +213,11 @@ async function listStaleReservedSellerCandidates(
   const { data: staleReservedCandidates, error: staleReservedError } =
     await supabase
       .from("sellers")
-      .select("id, capability, price_per_task, status, updated_at")
+      .select("id, capability, price_per_task, status, updated_at, last_heartbeat_at")
       .eq("capability", capability)
       .eq("status", "reserved")
       .lte("updated_at", getReservedSellerCutoff())
+      .gte("last_heartbeat_at", getOnlineSellerCutoff())
       .order("updated_at", { ascending: true })
       .limit(SELLER_CANDIDATE_BATCH_SIZE);
 

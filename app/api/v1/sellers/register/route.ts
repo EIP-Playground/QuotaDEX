@@ -38,8 +38,8 @@ export async function POST(request: Request) {
       approval_status: "approved",
       capability: seller.capability,
       price_per_task: seller.price_per_task,
-      status: "idle",
-      last_heartbeat_at: updatedAt,
+      status: "offline",
+      last_heartbeat_at: null,
       updated_at: updatedAt
     },
     {
@@ -56,8 +56,8 @@ export async function POST(request: Request) {
   }
 
   const { error: eventError } = await supabase.from("events").insert({
-    type: "SELLER_ONLINE",
-    message: `Seller ${seller.seller_id} is online with capability ${seller.capability}.`
+    type: "SELLER_REGISTERED",
+    message: `Seller ${seller.seller_id} registered capability ${seller.capability}.`
   });
 
   if (eventError) {

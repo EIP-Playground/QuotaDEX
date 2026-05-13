@@ -163,6 +163,8 @@ function eventTitleForType(type: string): string {
       return "Seller matched";
     case "DEMO_DONE":
       return "Demo completed";
+    case "SELLER_REGISTERED":
+      return "Seller registered";
     case "SELLER_ONLINE":
       return "Seller online";
     case "SELLER_OFFLINE":

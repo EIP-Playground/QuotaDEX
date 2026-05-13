@@ -14,12 +14,15 @@ type ServerEnv = PublicEnv & {
   KITE_EXPLORER_URL: string;
   PIEVERSE_FACILITATOR_BASE_URL: string;
   GATEWAY_PUBLIC_BASE_URL: string;
+  KITE_PASSPORT_ISSUER: string;
+  KITE_PASSPORT_JWKS_URL: string;
   KITE_PAYMENT_ASSET_ADDRESS: string;
   PAYMENT_TOKEN_DECIMALS: string;
   PAYMENT_CURRENCY: string;
   ESCROW_CONTRACT_ADDRESS: string;
   GATEWAY_PRIVATE_KEY: string;
   ALLOW_MOCK_PAYMENTS: string;
+  SELLER_SESSION_TTL_SECONDS: string;
 };
 
 type SupabaseServerEnv = PublicEnv & {
@@ -75,11 +78,20 @@ export function getServerEnv(): ServerEnv {
       "GATEWAY_PUBLIC_BASE_URL",
       process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"
     ),
+    KITE_PASSPORT_ISSUER: optionalEnv(
+      "KITE_PASSPORT_ISSUER",
+      "https://passport.prod.gokite.ai"
+    ),
+    KITE_PASSPORT_JWKS_URL: optionalEnv(
+      "KITE_PASSPORT_JWKS_URL",
+      "https://passport.prod.gokite.ai/.well-known/jwks.json"
+    ),
     KITE_PAYMENT_ASSET_ADDRESS: requireEnv("KITE_PAYMENT_ASSET_ADDRESS"),
     PAYMENT_TOKEN_DECIMALS: optionalEnv("PAYMENT_TOKEN_DECIMALS", "18"),
     PAYMENT_CURRENCY: optionalEnv("PAYMENT_CURRENCY", "USDT"),
     ESCROW_CONTRACT_ADDRESS: requireEnv("ESCROW_CONTRACT_ADDRESS"),
     GATEWAY_PRIVATE_KEY: requireEnv("GATEWAY_PRIVATE_KEY"),
-    ALLOW_MOCK_PAYMENTS: optionalEnv("ALLOW_MOCK_PAYMENTS", "false")
+    ALLOW_MOCK_PAYMENTS: optionalEnv("ALLOW_MOCK_PAYMENTS", "false"),
+    SELLER_SESSION_TTL_SECONDS: optionalEnv("SELLER_SESSION_TTL_SECONDS", "900")
   };
 }

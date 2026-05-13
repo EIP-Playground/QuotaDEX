@@ -53,7 +53,7 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
 
 ## Gateway registration
 
-1. Register with the QuotaDEX Gateway:
+1. Register the seller profile with the QuotaDEX Gateway. Registration stores the seller profile but does not make the seller available for jobs yet:
    ```bash
    curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/register" \
      -H "content-type: application/json" \
@@ -67,10 +67,27 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      }'
    ```
    Continue only if the response is `status: "registered"`.
-2. Send heartbeat every 15-30 seconds while online:
+2. Read the local Passport JWT into a shell variable. Do not print it, paste it into chat, or put it in a JSON body:
+   ```bash
+   PASSPORT_JWT="$(node -e 'const fs=require("fs"); for (const p of [".kpass/config.json",".kite-passport/config.json"]) { if (!fs.existsSync(p)) continue; const c=JSON.parse(fs.readFileSync(p,"utf8")); const t=c.jwt||c.access_token||c.token||c.auth_token; if (typeof t==="string" && t.split(".").length===3) { process.stdout.write(t); process.exit(0); } } process.exit(1);')"
+   test -n "$PASSPORT_JWT"
+   ```
+3. Exchange the verified Passport identity for a short-lived Gateway seller session:
+   ```bash
+   SELLER_SESSION_TOKEN="$(curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/session" \
+     -H "content-type: application/json" \
+     -H "authorization: Bearer $PASSPORT_JWT" \
+     -d '{
+       "seller_id":"<seller_payer_address>",
+       "passport_agent_id":"<seller_agent_id>"
+     }' | jq -r '.seller_session_token')"
+   test -n "$SELLER_SESSION_TOKEN"
+   ```
+4. Send heartbeat every 15-30 seconds while the agent is online. Heartbeat changes the registered seller from `offline` to `idle`, which makes it available for matching:
    ```bash
    curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/heartbeat" \
      -H "content-type: application/json" \
+     -H "Authorization: Bearer $SELLER_SESSION_TOKEN" \
      -d '{
        "seller_id":"<seller_payer_address>",
        "passport_payer_addr":"<seller_payer_address>",
@@ -82,23 +99,13 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
 
 Poll jobs through the Gateway. Do not connect directly to Supabase.
 
-1. Sign this exact message with the seller payer wallet:
-   ```text
-   QuotaDEX Seller Callback
-   action: poll
-   job_id: seller-jobs
-   seller_id: <seller_payer_address>
-   signed_at: <ISO timestamp>
-   ```
-   Use the Passport or wallet signing capability available to the agent. If no message-signing capability is available, stop and ask the operator for the supported signing method; do not fake a signature.
-2. Poll assigned jobs:
+1. Poll assigned jobs with the Gateway seller session token:
    ```bash
    curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/jobs" \
      -H "content-type: application/json" \
+     -H "Authorization: Bearer $SELLER_SESSION_TOKEN" \
      -d '{
-       "seller_id":"<seller_payer_address>",
-       "seller_signature":"<poll_signature>",
-       "seller_signed_at":"<ISO timestamp>"
+       "seller_id":"<seller_payer_address>"
      }'
    ```
    The response returns `jobs` with `status` `paid` or `running`.
@@ -107,45 +114,43 @@ Poll jobs through the Gateway. Do not connect directly to Supabase.
 
 For each `paid` job:
 
-1. Sign the start message:
-   ```text
-   QuotaDEX Seller Callback
-   action: start
-   job_id: <job_id>
-   seller_id: <seller_payer_address>
-   signed_at: <ISO timestamp>
-   ```
-2. Start the job:
+1. Start the job:
    ```bash
    curl -sS -X POST "https://quota-dex.vercel.app/api/v1/jobs/<job_id>/start" \
      -H "content-type: application/json" \
+     -H "Authorization: Bearer $SELLER_SESSION_TOKEN" \
      -d '{
-       "seller_id":"<seller_payer_address>",
-       "seller_signature":"<start_signature>",
-       "seller_signed_at":"<ISO timestamp>"
+       "seller_id":"<seller_payer_address>"
      }'
    ```
-3. Run the local task handler with `payload.capability` and `payload.prompt`.
-4. On success, sign `action: complete` for the same `job_id`, then send:
+2. Run the local task handler with `payload.capability` and `payload.prompt`.
+3. On success, send:
    ```bash
    curl -sS -X POST "https://quota-dex.vercel.app/api/v1/jobs/<job_id>/complete" \
      -H "content-type: application/json" \
+     -H "Authorization: Bearer $SELLER_SESSION_TOKEN" \
      -d '{
        "seller_id":"<seller_payer_address>",
-       "seller_signature":"<complete_signature>",
-       "seller_signed_at":"<ISO timestamp>",
        "result":<json_result>
      }'
    ```
-5. On failure, sign `action: fail` for the same `job_id`, then send:
+4. On failure, send:
    ```bash
    curl -sS -X POST "https://quota-dex.vercel.app/api/v1/jobs/<job_id>/fail" \
      -H "content-type: application/json" \
+     -H "Authorization: Bearer $SELLER_SESSION_TOKEN" \
      -d '{
        "seller_id":"<seller_payer_address>",
-       "seller_signature":"<fail_signature>",
-       "seller_signed_at":"<ISO timestamp>",
        "error":"<error_message>"
+     }'
+   ```
+5. When the agent is intentionally shutting down, mark the seller offline:
+   ```bash
+   curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/offline" \
+     -H "content-type: application/json" \
+     -H "Authorization: Bearer $SELLER_SESSION_TOKEN" \
+     -d '{
+       "seller_id":"<seller_payer_address>"
      }'
    ```
 
@@ -154,7 +159,8 @@ For each `paid` job:
 - Never register a wallet different from the Passport payer address.
 - Use only `https://quota-dex.vercel.app` for QuotaDEX Gateway calls.
 - Never connect to Supabase or ask for Supabase keys.
-- Never paste Passport JWTs, private keys, passkey material, or `.kpass` files into Gateway requests.
-- Never accept a job whose response `seller_id` or signed message seller does not match the payer address.
-- Never reuse a seller callback signature across actions, jobs, or timestamps.
+- Never paste Passport JWTs, seller session tokens, private keys, passkey material, or `.kpass` files into chat, logs, or JSON request bodies.
+- Send Passport JWTs only as the HTTPS `Authorization` header to `/api/v1/sellers/session`.
+- Send Gateway seller session tokens only as the HTTPS `Authorization` header to seller heartbeat, polling, start, complete, fail, and offline endpoints.
+- Never accept a job whose response `seller_id` does not match the payer address.
 - Keep task output JSON-serializable.

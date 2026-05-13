@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import {
   badRequestResponse,
+  forbiddenResponse,
   internalServerErrorResponse,
   notFoundResponse
 } from "@/lib/errors";
+import { getServerEnv } from "@/lib/env";
+import {
+  assertValidSellerSession,
+  SellerSessionError
+} from "@/lib/seller-session";
 import { parseSellerIdentityBody } from "@/lib/sellers";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
@@ -24,6 +30,36 @@ export async function POST(request: Request) {
     return badRequestResponse(
       error instanceof Error ? error.message : "Invalid seller heartbeat body.",
       "INVALID_REQUEST"
+    );
+  }
+
+  let env: ReturnType<typeof getServerEnv>;
+
+  try {
+    env = getServerEnv();
+  } catch (error) {
+    return internalServerErrorResponse(
+      "Missing Gateway configuration for seller heartbeat.",
+      "GATEWAY_CONFIG_MISSING",
+      { reason: error instanceof Error ? error.message : "Unknown config error." }
+    );
+  }
+
+  try {
+    await assertValidSellerSession({
+      sellerId: seller.seller_id,
+      authorizationHeader: request.headers.get("authorization"),
+      secret: env.GATEWAY_SALT
+    });
+  } catch (error) {
+    if (error instanceof SellerSessionError) {
+      return forbiddenResponse(error.message, error.code);
+    }
+
+    return internalServerErrorResponse(
+      "Failed to verify seller heartbeat session.",
+      "SELLER_SESSION_CHECK_FAILED",
+      { reason: error instanceof Error ? error.message : "Unknown session error." }
     );
   }
 

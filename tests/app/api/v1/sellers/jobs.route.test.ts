@@ -1,5 +1,6 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { buildSellerCallbackMessage } from "@/lib/seller-callback-auth";
+import { createSellerSessionToken } from "@/lib/seller-session";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { POST } from "@/app/api/v1/sellers/jobs/route";
 
@@ -40,6 +41,7 @@ describe("POST /api/v1/sellers/jobs", () => {
       "0x4444444444444444444444444444444444444444";
     process.env.GATEWAY_PRIVATE_KEY =
       "0x1111111111111111111111111111111111111111111111111111111111111111";
+    process.env.GATEWAY_SALT = "seller-session-secret";
 
     limit.mockResolvedValue({
       data: [
@@ -120,5 +122,30 @@ describe("POST /api/v1/sellers/jobs", () => {
     });
     expect(eq).toHaveBeenCalledWith("seller_id", sellerId);
     expect(inFilter).toHaveBeenCalledWith("status", ["paid", "running"]);
+  });
+
+  it("returns jobs for a seller authorized by a Gateway seller session token", async () => {
+    const token = await createSellerSessionToken(
+      {
+        sellerId,
+        passportAgentId: "agent-seller-1",
+        passportSubject: "user_123"
+      },
+      "seller-session-secret"
+    );
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/jobs", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ seller_id: sellerId })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.jobs).toHaveLength(1);
+    expect(eq).toHaveBeenCalledWith("seller_id", sellerId);
   });
 });

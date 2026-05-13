@@ -142,8 +142,9 @@ docs/                 # Product spec, MVP rules, dev sequence, phase tracker
 | Method | Path                           | Description                                   |
 | ------ | ------------------------------ | --------------------------------------------- |
 | `POST` | `/api/v1/sellers/register`     | Register a seller with a capability and price |
-| `POST` | `/api/v1/sellers/heartbeat`    | Keep seller status as `online`                |
-| `POST` | `/api/v1/sellers/offline`      | Mark seller as offline                        |
+| `POST` | `/api/v1/sellers/session`      | Exchange verified Passport identity for a short-lived Gateway seller session |
+| `POST` | `/api/v1/sellers/heartbeat`    | Mark an authenticated seller session as `idle` / online |
+| `POST` | `/api/v1/sellers/offline`      | Mark an authenticated seller session as offline |
 
 ### Job Flow
 
@@ -156,8 +157,11 @@ docs/                 # Product spec, MVP rules, dev sequence, phase tracker
 | `POST` | `/api/v1/jobs/:id/complete`    | Seller signals completion; triggers `Escrow.release`     |
 | `POST` | `/api/v1/jobs/:id/fail`        | Seller signals failure; triggers `Escrow.refund`         |
 
-Seller job callbacks must include `seller_signature` and `seller_signed_at`.
-The signature covers `action`, `job_id`, `seller_id`, and `signed_at` using the message in `skills/quotadex-seller/SKILL.md`.
+Seller job callbacks should use a Gateway seller session: call
+`/api/v1/sellers/session` with a verified Passport JWT, then include
+`Authorization: Bearer <seller_session_token>` on heartbeat, poll, start,
+complete, fail, and offline requests. Legacy EVM `seller_signature` callbacks
+remain available as a development fallback.
 
 ### Dashboard
 
@@ -185,6 +189,7 @@ UPSTASH_REDIS_REST_TOKEN=
 
 # Gateway config — keep server-side only
 GATEWAY_SALT=                           # Random secret used in fingerprint generation
+SELLER_SESSION_TTL_SECONDS=900          # Gateway seller session lifetime
 
 # Kite AI / blockchain
 KITE_NETWORK=kite-testnet
@@ -193,6 +198,10 @@ KITE_RPC_URL=https://rpc-testnet.gokite.ai
 KITE_EXPLORER_URL=https://testnet.kitescan.ai
 ESCROW_CONTRACT_ADDRESS=                # Deployed QuotaDEXEscrow address
 GATEWAY_PRIVATE_KEY=                    # Gateway wallet private key (NOT the contract's)
+
+# Kite Passport identity verification for seller sessions
+KITE_PASSPORT_ISSUER=https://passport.prod.gokite.ai
+KITE_PASSPORT_JWKS_URL=https://passport.prod.gokite.ai/.well-known/jwks.json
 
 # Payment asset / x402 facilitator
 PIEVERSE_FACILITATOR_BASE_URL=https://facilitator.pieverse.io

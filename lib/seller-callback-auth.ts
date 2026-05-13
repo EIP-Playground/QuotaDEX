@@ -6,6 +6,11 @@ import {
   type Hex,
   verifyMessage
 } from "viem";
+import {
+  readBearerToken,
+  verifySellerSessionToken,
+  SellerSessionError
+} from "@/lib/seller-session";
 
 export type SellerCallbackAction = "poll" | "start" | "complete" | "fail";
 
@@ -123,4 +128,52 @@ export async function assertValidSellerCallbackSignature(params: {
         : "Seller signature verification failed."
     );
   }
+}
+
+export async function assertValidSellerCallbackAuth(params: {
+  action: SellerCallbackAction;
+  jobId: string;
+  sellerId: string;
+  signature?: string;
+  signedAt?: string;
+  rpcUrl: string;
+  authorizationHeader?: string | null;
+  gatewaySecret: string;
+  now?: Date;
+}): Promise<void> {
+  const sessionToken = readBearerToken(params.authorizationHeader ?? null);
+
+  if (sessionToken) {
+    try {
+      const claims = await verifySellerSessionToken(
+        sessionToken,
+        params.gatewaySecret,
+        params.now
+      );
+
+      if (claims.sellerId.toLowerCase() !== params.sellerId.toLowerCase()) {
+        throw new SellerCallbackSignatureError(
+          "Seller session token does not match seller_id."
+        );
+      }
+
+      return;
+    } catch (error) {
+      if (error instanceof SellerCallbackSignatureError) {
+        throw error;
+      }
+
+      if (error instanceof SellerSessionError) {
+        throw new SellerCallbackSignatureError(error.message);
+      }
+
+      throw new SellerCallbackSignatureError(
+        error instanceof Error
+          ? `Seller session verification failed: ${error.message}`
+          : "Seller session verification failed."
+      );
+    }
+  }
+
+  await assertValidSellerCallbackSignature(params);
 }
