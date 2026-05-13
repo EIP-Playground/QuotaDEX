@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import {
   badRequestResponse,
+  forbiddenResponse,
   internalServerErrorResponse
 } from "@/lib/errors";
+import {
+  assertValidSellerSession,
+  SellerSessionError
+} from "@/lib/seller-session";
 import { parseRegisterSellerBody } from "@/lib/sellers";
 import { createServerSupabaseClient } from "@/lib/supabase";
+
+type ExistingSellerRow = {
+  id: string;
+  passport_subject: string | null;
+};
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -28,30 +38,84 @@ export async function POST(request: Request) {
 
   const supabase = createServerSupabaseClient();
   const updatedAt = new Date().toISOString();
+  const { data: existingSeller, error: readError } = await supabase
+    .from("sellers")
+    .select("id, passport_subject")
+    .eq("id", seller.seller_id)
+    .maybeSingle();
 
-  const { error: upsertError } = await supabase.from("sellers").upsert(
-    {
-      id: seller.seller_id,
-      wallet_address: seller.wallet ?? seller.seller_id,
-      passport_agent_id: seller.passport_agent_id ?? null,
-      passport_payer_addr: seller.passport_payer_addr ?? seller.seller_id,
-      approval_status: "approved",
-      capability: seller.capability,
-      price_per_task: seller.price_per_task,
-      status: "offline",
-      last_heartbeat_at: null,
-      updated_at: updatedAt
-    },
-    {
-      onConflict: "id"
+  if (readError) {
+    return internalServerErrorResponse(
+      "Failed to load existing seller.",
+      "SELLER_READ_FAILED",
+      { reason: readError.message }
+    );
+  }
+
+  const existingSellerRow = existingSeller as ExistingSellerRow | null;
+
+  if (existingSellerRow?.passport_subject) {
+    const gatewaySecret = process.env.GATEWAY_SALT;
+
+    if (!gatewaySecret) {
+      return internalServerErrorResponse(
+        "Missing Gateway configuration for protected seller registration.",
+        "GATEWAY_CONFIG_MISSING",
+        { reason: "Missing required environment variable: GATEWAY_SALT" }
+      );
     }
-  );
 
-  if (upsertError) {
+    try {
+      await assertValidSellerSession({
+        sellerId: seller.seller_id,
+        authorizationHeader: request.headers.get("authorization"),
+        secret: gatewaySecret
+      });
+    } catch (error) {
+      if (error instanceof SellerSessionError) {
+        return forbiddenResponse(error.message, error.code);
+      }
+
+      return internalServerErrorResponse(
+        "Failed to verify seller registration session.",
+        "SELLER_SESSION_CHECK_FAILED",
+        { reason: error instanceof Error ? error.message : "Unknown session error." }
+      );
+    }
+  }
+
+  const sellerProfile = {
+    wallet_address: seller.wallet ?? seller.seller_id,
+    capability: seller.capability,
+    price_per_task: seller.price_per_task,
+    status: "offline",
+    last_heartbeat_at: null,
+    updated_at: updatedAt
+  };
+
+  const writeResult = existingSellerRow?.passport_subject
+    ? await supabase
+        .from("sellers")
+        .update(sellerProfile)
+        .eq("id", seller.seller_id)
+    : await supabase.from("sellers").upsert(
+        {
+          id: seller.seller_id,
+          ...sellerProfile,
+          passport_agent_id: null,
+          passport_payer_addr: seller.seller_id,
+          approval_status: "approved"
+        },
+        {
+          onConflict: "id"
+        }
+      );
+
+  if (writeResult.error) {
     return internalServerErrorResponse(
       "Failed to register seller.",
       "SELLER_REGISTER_FAILED",
-      { reason: upsertError.message }
+      { reason: writeResult.error.message }
     );
   }
 

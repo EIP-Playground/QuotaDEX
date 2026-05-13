@@ -189,6 +189,7 @@ UPSTASH_REDIS_REST_TOKEN=
 # Gateway 配置 — 仅限服务端
 GATEWAY_SALT=                           # 用于指纹生成的随机密钥
 SELLER_SESSION_TTL_SECONDS=900          # Gateway seller session 有效期
+ALLOW_SELLER_SIGNATURE_AUTH=false      # 仅本地 legacy EVM seller 签名使用
 
 # Kite AI / 区块链
 KITE_NETWORK=kite-testnet
@@ -254,6 +255,7 @@ cat skills/quotadex-seller/SKILL.md
 ```
 
 生产验证默认要求 `X-PAYMENT`。只有本地 demo 才应设置 `ALLOW_MOCK_PAYMENTS=true`。
+生产 seller callback 默认要求 Gateway seller session token。只有本地 legacy EVM seller worker 才应设置 `ALLOW_SELLER_SIGNATURE_AUTH=true`。
 
 ---
 

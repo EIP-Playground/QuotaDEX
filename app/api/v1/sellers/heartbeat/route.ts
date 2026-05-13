@@ -45,8 +45,10 @@ export async function POST(request: Request) {
     );
   }
 
+  let sessionClaims: Awaited<ReturnType<typeof assertValidSellerSession>>;
+
   try {
-    await assertValidSellerSession({
+    sessionClaims = await assertValidSellerSession({
       sellerId: seller.seller_id,
       authorizationHeader: request.headers.get("authorization"),
       secret: env.GATEWAY_SALT
@@ -86,16 +88,27 @@ export async function POST(request: Request) {
     existingSeller.status === "busy" || existingSeller.status === "reserved"
       ? existingSeller.status
       : "idle";
+  const now = new Date().toISOString();
+  const heartbeatUpdate: {
+    status: string;
+    passport_agent_id?: string;
+    passport_payer_addr: string;
+    last_heartbeat_at: string;
+    updated_at?: string;
+  } = {
+    status: nextStatus,
+    passport_agent_id: sessionClaims.passportAgentId,
+    passport_payer_addr: sessionClaims.sellerId,
+    last_heartbeat_at: now
+  };
+
+  if (existingSeller.status !== "busy" && existingSeller.status !== "reserved") {
+    heartbeatUpdate.updated_at = now;
+  }
 
   const { error: updateError } = await supabase
     .from("sellers")
-    .update({
-      status: nextStatus,
-      passport_agent_id: seller.passport_agent_id ?? undefined,
-      passport_payer_addr: seller.passport_payer_addr ?? seller.seller_id,
-      last_heartbeat_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
+    .update(heartbeatUpdate)
     .eq("id", seller.seller_id);
 
   if (updateError) {

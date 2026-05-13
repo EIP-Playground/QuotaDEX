@@ -23,11 +23,20 @@ function getWorkerConfig() {
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
     requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  const sellerPrivateKey = requireEnv("SELLER_PRIVATE_KEY");
-  const sellerAccount = privateKeyToAccount(sellerPrivateKey);
-  const sellerId = process.env.SELLER_ID?.trim() || sellerAccount.address;
+  const sellerPrivateKey = process.env.SELLER_PRIVATE_KEY?.trim();
+  const sellerAccount = sellerPrivateKey
+    ? privateKeyToAccount(sellerPrivateKey)
+    : null;
+  const sellerId =
+    process.env.SELLER_ID?.trim() ||
+    sellerAccount?.address ||
+    requireEnv("SELLER_ID");
+  const sellerSessionToken = requireEnv("SELLER_SESSION_TOKEN");
 
-  if (sellerId.toLowerCase() !== sellerAccount.address.toLowerCase()) {
+  if (
+    sellerAccount &&
+    sellerId.toLowerCase() !== sellerAccount.address.toLowerCase()
+  ) {
     throw new Error("SELLER_ID must match the address derived from SELLER_PRIVATE_KEY.");
   }
 
@@ -38,6 +47,7 @@ function getWorkerConfig() {
     supabaseKey,
     sellerId,
     sellerAccount,
+    sellerSessionToken,
     capability: process.env.SELLER_CAPABILITY?.trim() || DEFAULT_CAPABILITY,
     pricePerTask:
       process.env.SELLER_PRICE_PER_TASK?.trim() || DEFAULT_PRICE_PER_TASK,
@@ -65,6 +75,14 @@ function buildSellerCallbackMessage({ action, jobId, sellerId, signedAt }) {
 }
 
 async function buildSellerCallbackAuth(config, action, jobId) {
+  if (config.sellerSessionToken) {
+    return {};
+  }
+
+  if (!config.sellerAccount) {
+    throw new Error("SELLER_PRIVATE_KEY is required for legacy seller signatures.");
+  }
+
   const signedAt = new Date().toISOString();
   const message = buildSellerCallbackMessage({
     action,
@@ -80,12 +98,18 @@ async function buildSellerCallbackAuth(config, action, jobId) {
   };
 }
 
-async function gatewayPost(baseUrl, path, body) {
-  const response = await fetch(`${baseUrl}${path}`, {
+async function gatewayPost(config, path, body) {
+  const headers = {
+    "content-type": "application/json"
+  };
+
+  if (config.sellerSessionToken) {
+    headers.authorization = `Bearer ${config.sellerSessionToken}`;
+  }
+
+  const response = await fetch(`${config.gatewayBaseUrl}${path}`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
+    headers,
     body: JSON.stringify(body)
   });
 
@@ -171,7 +195,7 @@ async function handleJob(config, activeJobs, job) {
 
   try {
     const startAuth = await buildSellerCallbackAuth(config, "start", job.id);
-    await gatewayPost(config.gatewayBaseUrl, `/api/v1/jobs/${job.id}/start`, {
+    await gatewayPost(config, `/api/v1/jobs/${job.id}/start`, {
       seller_id: config.sellerId,
       ...startAuth
     });
@@ -183,15 +207,11 @@ async function handleJob(config, activeJobs, job) {
     });
 
     const completeAuth = await buildSellerCallbackAuth(config, "complete", job.id);
-    await gatewayPost(
-      config.gatewayBaseUrl,
-      `/api/v1/jobs/${job.id}/complete`,
-      {
-        seller_id: config.sellerId,
-        ...completeAuth,
-        result
-      }
-    );
+    await gatewayPost(config, `/api/v1/jobs/${job.id}/complete`, {
+      seller_id: config.sellerId,
+      ...completeAuth,
+      result
+    });
 
     console.log(`[worker] completed job ${job.id}`);
   } catch (error) {
@@ -202,7 +222,7 @@ async function handleJob(config, activeJobs, job) {
 
     try {
       const failAuth = await buildSellerCallbackAuth(config, "fail", job.id);
-      await gatewayPost(config.gatewayBaseUrl, `/api/v1/jobs/${job.id}/fail`, {
+      await gatewayPost(config, `/api/v1/jobs/${job.id}/fail`, {
         seller_id: config.sellerId,
         ...failAuth,
         error: errorMessage
@@ -250,7 +270,7 @@ async function main() {
   await selfCheck(config);
   console.log("[worker] self-check passed");
 
-  await gatewayPost(config.gatewayBaseUrl, "/api/v1/sellers/register", {
+  await gatewayPost(config, "/api/v1/sellers/register", {
     seller_id: config.sellerId,
     capability: config.capability,
     price_per_task: config.pricePerTask,
@@ -261,7 +281,7 @@ async function main() {
 
   const heartbeatTimer = setInterval(async () => {
     try {
-      await gatewayPost(config.gatewayBaseUrl, "/api/v1/sellers/heartbeat", {
+      await gatewayPost(config, "/api/v1/sellers/heartbeat", {
         seller_id: config.sellerId
       });
     } catch (error) {
@@ -326,7 +346,7 @@ async function main() {
     clearInterval(pendingJobPollTimer);
 
     try {
-      await gatewayPost(config.gatewayBaseUrl, "/api/v1/sellers/offline", {
+      await gatewayPost(config, "/api/v1/sellers/offline", {
         seller_id: config.sellerId
       });
     } catch (error) {

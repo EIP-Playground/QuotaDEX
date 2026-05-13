@@ -190,6 +190,7 @@ UPSTASH_REDIS_REST_TOKEN=
 # Gateway config — keep server-side only
 GATEWAY_SALT=                           # Random secret used in fingerprint generation
 SELLER_SESSION_TTL_SECONDS=900          # Gateway seller session lifetime
+ALLOW_SELLER_SIGNATURE_AUTH=false      # Dev-only legacy EVM seller signatures
 
 # Kite AI / blockchain
 KITE_NETWORK=kite-testnet
@@ -255,6 +256,7 @@ cat skills/quotadex-seller/SKILL.md
 ```
 
 Production verification requires `X-PAYMENT` by default. Set `ALLOW_MOCK_PAYMENTS=true` only for local demos.
+Production seller callbacks require a Gateway seller session token by default. Set `ALLOW_SELLER_SIGNATURE_AUTH=true` only for local legacy EVM seller workers.
 
 ---
 

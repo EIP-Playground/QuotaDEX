@@ -71,6 +71,7 @@ describe("seller lifecycle routes", () => {
     expect(sellerUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         id: sellerId,
+        passport_agent_id: null,
         status: "offline",
         last_heartbeat_at: null
       }),
@@ -136,6 +137,48 @@ describe("seller lifecycle routes", () => {
         status: "idle",
         passport_agent_id: "agent-seller-1",
         passport_payer_addr: sellerId,
+        last_heartbeat_at: expect.any(String)
+      })
+    );
+  });
+
+  it("does not refresh updated_at while a reserved seller heartbeats", async () => {
+    sellerReadMaybeSingle.mockResolvedValue({
+      data: {
+        id: sellerId,
+        status: "reserved"
+      },
+      error: null
+    });
+    const token = await createSellerSessionToken(
+      {
+        sellerId,
+        passportAgentId: "agent-seller-1",
+        passportSubject: "user_123"
+      },
+      "seller-session-secret"
+    );
+    const response = await heartbeatSeller(
+      new Request("https://quotadex.test/api/v1/sellers/heartbeat", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          seller_id: sellerId
+        })
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(sellerUpdate).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        updated_at: expect.any(String)
+      })
+    );
+    expect(sellerUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "reserved",
         last_heartbeat_at: expect.any(String)
       })
     );

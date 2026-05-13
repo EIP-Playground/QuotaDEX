@@ -42,6 +42,7 @@ describe("POST /api/v1/sellers/jobs", () => {
     process.env.GATEWAY_PRIVATE_KEY =
       "0x1111111111111111111111111111111111111111111111111111111111111111";
     process.env.GATEWAY_SALT = "seller-session-secret";
+    process.env.ALLOW_SELLER_SIGNATURE_AUTH = "true";
 
     limit.mockResolvedValue({
       data: [
@@ -147,5 +148,21 @@ describe("POST /api/v1/sellers/jobs", () => {
     expect(response.status).toBe(200);
     expect(body.jobs).toHaveLength(1);
     expect(eq).toHaveBeenCalledWith("seller_id", sellerId);
+  });
+
+  it("rejects legacy seller signatures when they are not explicitly enabled", async () => {
+    process.env.ALLOW_SELLER_SIGNATURE_AUTH = "false";
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/jobs", {
+        method: "POST",
+        body: JSON.stringify(await signedPollBody())
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("SELLER_SIGNATURE_INVALID");
+    expect(select).not.toHaveBeenCalled();
   });
 });

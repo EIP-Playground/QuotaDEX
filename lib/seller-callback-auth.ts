@@ -139,6 +139,7 @@ export async function assertValidSellerCallbackAuth(params: {
   rpcUrl: string;
   authorizationHeader?: string | null;
   gatewaySecret: string;
+  allowLegacySignatureAuth?: boolean;
   now?: Date;
 }): Promise<void> {
   const sessionToken = readBearerToken(params.authorizationHeader ?? null);
@@ -173,6 +174,12 @@ export async function assertValidSellerCallbackAuth(params: {
           : "Seller session verification failed."
       );
     }
+  }
+
+  if (!params.allowLegacySignatureAuth) {
+    throw new SellerCallbackSignatureError(
+      "Gateway seller session bearer token is required."
+    );
   }
 
   await assertValidSellerCallbackSignature(params);

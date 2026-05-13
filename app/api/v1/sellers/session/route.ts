@@ -12,6 +12,7 @@ import {
 } from "@/lib/passport-auth";
 import { createSellerSessionToken, readBearerToken } from "@/lib/seller-session";
 import { createServerSupabaseClient } from "@/lib/supabase";
+import { getAddress, isAddress } from "viem";
 
 type SellerSessionRequest = {
   seller_id: string;
@@ -24,6 +25,11 @@ type SellerSessionRow = {
   passport_payer_addr: string | null;
   passport_subject: string | null;
   approval_status: string | null;
+};
+
+type ExistingValueFilterQuery = {
+  eq(column: string, value: string): ExistingValueFilterQuery;
+  is(column: string, value: null): ExistingValueFilterQuery;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -51,6 +57,42 @@ function parseSellerSessionRequest(input: unknown): SellerSessionRequest {
   };
 }
 
+function normalizeSellerAddress(value: string): string {
+  if (!isAddress(value)) {
+    throw new Error("seller_id must be a valid EVM address.");
+  }
+
+  return getAddress(value);
+}
+
+function requirePassportSellerIdentity(
+  identity: Awaited<ReturnType<typeof verifyPassportBearerToken>>
+): { agentId: string; payerAddress: string } {
+  if (!identity.agentId || !identity.payerAddress) {
+    throw new PassportAuthError(
+      "Passport bearer token must include verified agent id and payer address claims.",
+      "PASSPORT_TOKEN_INVALID"
+    );
+  }
+
+  return {
+    agentId: identity.agentId,
+    payerAddress: identity.payerAddress
+  };
+}
+
+function applyExistingValueFilter<Query extends ExistingValueFilterQuery>(
+  query: Query,
+  column: string,
+  value: string | null
+): Query {
+  if (value) {
+    return query.eq(column, value) as Query;
+  }
+
+  return query.is(column, null) as Query;
+}
+
 export async function POST(request: Request) {
   let body: unknown;
 
@@ -67,6 +109,17 @@ export async function POST(request: Request) {
   } catch (error) {
     return badRequestResponse(
       error instanceof Error ? error.message : "Invalid seller session body.",
+      "INVALID_REQUEST"
+    );
+  }
+
+  let normalizedSellerId: string;
+
+  try {
+    normalizedSellerId = normalizeSellerAddress(sessionRequest.seller_id);
+  } catch (error) {
+    return badRequestResponse(
+      error instanceof Error ? error.message : "Invalid seller address.",
       "INVALID_REQUEST"
     );
   }
@@ -99,6 +152,7 @@ export async function POST(request: Request) {
       issuer: env.KITE_PASSPORT_ISSUER,
       jwksUrl: env.KITE_PASSPORT_JWKS_URL
     });
+    requirePassportSellerIdentity(identity);
   } catch (error) {
     if (error instanceof PassportAuthError) {
       return forbiddenResponse(error.message, error.code);
@@ -108,6 +162,24 @@ export async function POST(request: Request) {
       "Failed to verify Passport bearer token.",
       "PASSPORT_VERIFY_FAILED",
       { reason: error instanceof Error ? error.message : "Unknown Passport error." }
+    );
+  }
+
+  const passportSeller = requirePassportSellerIdentity(identity);
+
+  if (
+    passportSeller.payerAddress.toLowerCase() !== normalizedSellerId.toLowerCase()
+  ) {
+    return forbiddenResponse(
+      "Passport payer address does not match seller_id.",
+      "SELLER_PASSPORT_MISMATCH"
+    );
+  }
+
+  if (passportSeller.agentId !== sessionRequest.passport_agent_id) {
+    return forbiddenResponse(
+      "Passport agent id does not match the requested seller agent.",
+      "SELLER_PASSPORT_MISMATCH"
     );
   }
 
@@ -143,7 +215,7 @@ export async function POST(request: Request) {
 
   if (
     sellerRow.passport_agent_id &&
-    sellerRow.passport_agent_id !== sessionRequest.passport_agent_id
+    sellerRow.passport_agent_id !== passportSeller.agentId
   ) {
     return forbiddenResponse(
       "Passport agent id does not match the registered seller.",
@@ -153,7 +225,7 @@ export async function POST(request: Request) {
 
   if (
     sellerRow.passport_payer_addr &&
-    sellerRow.passport_payer_addr.toLowerCase() !== sessionRequest.seller_id.toLowerCase()
+    sellerRow.passport_payer_addr.toLowerCase() !== passportSeller.payerAddress.toLowerCase()
   ) {
     return forbiddenResponse(
       "Passport payer address does not match seller_id.",
@@ -171,21 +243,49 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: updateError } = await supabase
+  let bindQuery = supabase
     .from("sellers")
     .update({
-      passport_agent_id: sessionRequest.passport_agent_id,
+      passport_agent_id: passportSeller.agentId,
+      passport_payer_addr: passportSeller.payerAddress,
       passport_subject: identity.subject,
       passport_email: identity.email,
       updated_at: new Date().toISOString()
     })
     .eq("id", sessionRequest.seller_id);
 
+  bindQuery = applyExistingValueFilter(
+    bindQuery,
+    "passport_agent_id",
+    sellerRow.passport_agent_id
+  );
+  bindQuery = applyExistingValueFilter(
+    bindQuery,
+    "passport_payer_addr",
+    sellerRow.passport_payer_addr
+  );
+  bindQuery = applyExistingValueFilter(
+    bindQuery,
+    "passport_subject",
+    sellerRow.passport_subject
+  );
+
+  const { data: boundSeller, error: updateError } = await bindQuery
+    .select("id")
+    .maybeSingle();
+
   if (updateError) {
     return internalServerErrorResponse(
       "Failed to bind seller Passport identity.",
       "SELLER_SESSION_BIND_FAILED",
       { reason: updateError.message }
+    );
+  }
+
+  if (!boundSeller) {
+    return forbiddenResponse(
+      "Seller Passport identity changed before the session could be created.",
+      "SELLER_PASSPORT_MISMATCH"
     );
   }
 
@@ -196,7 +296,7 @@ export async function POST(request: Request) {
   const sellerSessionToken = await createSellerSessionToken(
     {
       sellerId: sessionRequest.seller_id,
-      passportAgentId: sessionRequest.passport_agent_id,
+      passportAgentId: passportSeller.agentId,
       passportSubject: identity.subject
     },
     env.GATEWAY_SALT,

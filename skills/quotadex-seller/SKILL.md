@@ -61,18 +61,18 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
        "seller_id":"<seller_payer_address>",
        "wallet":"<seller_payer_address>",
        "passport_payer_addr":"<seller_payer_address>",
-       "passport_agent_id":"<seller_agent_id>",
        "capability":"<capability>",
        "price_per_task":"<price_per_task>"
      }'
    ```
    Continue only if the response is `status: "registered"`.
-2. Read the local Passport JWT into a shell variable. Do not print it, paste it into chat, or put it in a JSON body:
+2. Read a local Passport bearer token into a shell variable. The Gateway will accept it only if the token is signed by Kite Passport and contains verified agent id and payer address claims for this seller. Do not print it, paste it into chat, or put it in a JSON body:
    ```bash
    PASSPORT_JWT="$(node -e 'const fs=require("fs"); for (const p of [".kpass/config.json",".kite-passport/config.json"]) { if (!fs.existsSync(p)) continue; const c=JSON.parse(fs.readFileSync(p,"utf8")); const t=c.jwt||c.access_token||c.token||c.auth_token; if (typeof t==="string" && t.split(".").length===3) { process.stdout.write(t); process.exit(0); } } process.exit(1);')"
    test -n "$PASSPORT_JWT"
    ```
-3. Exchange the verified Passport identity for a short-lived Gateway seller session:
+   If this step cannot find a token, run `kpass status --output json` and follow `next_command`. Never invent or hand-write token values.
+3. Exchange the verified Passport identity for a short-lived Gateway seller session. The `seller_id` must equal the verified Passport payer address and `passport_agent_id` must equal the verified Passport agent id:
    ```bash
    SELLER_SESSION_TOKEN="$(curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/session" \
      -H "content-type: application/json" \
@@ -83,6 +83,7 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      }' | jq -r '.seller_session_token')"
    test -n "$SELLER_SESSION_TOKEN"
    ```
+   If the response code is `PASSPORT_TOKEN_INVALID`, refresh or re-authenticate Passport and retry. Do not fall back to unsigned Gateway calls.
 4. Send heartbeat every 15-30 seconds while the agent is online. Heartbeat changes the registered seller from `offline` to `idle`, which makes it available for matching:
    ```bash
    curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/heartbeat" \

@@ -78,6 +78,7 @@ describe("seller job callbacks", () => {
       "0x4444444444444444444444444444444444444444";
     process.env.GATEWAY_PRIVATE_KEY =
       "0x1111111111111111111111111111111111111111111111111111111111111111";
+    process.env.ALLOW_SELLER_SIGNATURE_AUTH = "true";
 
     vi.mocked(loadJobSnapshot).mockResolvedValue(runningJob as never);
     vi.mocked(updateJobStatusForSeller).mockResolvedValue({

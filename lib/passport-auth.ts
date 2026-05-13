@@ -3,6 +3,7 @@ import {
   verify,
   type JsonWebKey as NodeJsonWebKey
 } from "node:crypto";
+import { getAddress, isAddress } from "viem";
 
 type JsonWebKeySet = {
   keys?: NodeJsonWebKey[];
@@ -27,6 +28,8 @@ export type PassportIdentity = {
   subject: string;
   email: string | null;
   issuer: string;
+  agentId: string | null;
+  payerAddress: string | null;
 };
 
 export class PassportAuthError extends Error {
@@ -57,6 +60,94 @@ function base64UrlDecodeJson<T>(value: string): T {
   return JSON.parse(
     Buffer.from(padded.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
   ) as T;
+}
+
+function readNestedRecord(
+  input: Record<string, unknown>,
+  key: string
+): Record<string, unknown> | null {
+  const value = input[key];
+
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readStringClaim(
+  payload: Record<string, unknown>,
+  keys: string[]
+): string | null {
+  for (const key of keys) {
+    const value = payload[key];
+
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function readNestedStringClaim(
+  payload: Record<string, unknown>,
+  parentKeys: string[],
+  childKeys: string[]
+): string | null {
+  for (const parentKey of parentKeys) {
+    const nested = readNestedRecord(payload, parentKey);
+
+    if (!nested) {
+      continue;
+    }
+
+    const value = readStringClaim(nested, childKeys);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function readAgentIdClaim(payload: JwtPayload): string | null {
+  return (
+    readStringClaim(payload, [
+      "passport_agent_id",
+      "agent_id",
+      "agentId",
+      "kite_agent_id"
+    ]) ??
+    readNestedStringClaim(payload, ["agent", "passport_agent"], [
+      "id",
+      "agent_id",
+      "agentId"
+    ])
+  );
+}
+
+function readPayerAddressClaim(payload: JwtPayload): string | null {
+  const candidate =
+    readStringClaim(payload, [
+      "passport_payer_addr",
+      "payer_addr",
+      "payer_address",
+      "payerAddress",
+      "wallet_address",
+      "walletAddress",
+      "user_wallet",
+      "userWallet",
+      "aa_wallet_address",
+      "smart_wallet_address"
+    ]) ??
+    readNestedStringClaim(payload, ["wallet", "payer", "account"], [
+      "address",
+      "wallet_address",
+      "payer_addr",
+      "payer_address"
+    ]);
+
+  return candidate && isAddress(candidate) ? getAddress(candidate) : null;
 }
 
 async function loadJwks(jwksUrl: string): Promise<NodeJsonWebKey[]> {
@@ -149,7 +240,11 @@ export async function verifyPassportBearerToken(
   }
 
   const keys = await loadJwks(jwksUrl);
-  const key = keys.find((candidate) => candidate.kid === header.kid) ?? keys[0];
+  const key = header.kid
+    ? keys.find((candidate) => candidate.kid === header.kid)
+    : keys.length === 1
+      ? keys[0]
+      : undefined;
 
   if (!key) {
     throw new PassportAuthError(
@@ -214,6 +309,8 @@ export async function verifyPassportBearerToken(
   return {
     subject: payload.sub,
     email: typeof payload.email === "string" ? payload.email : null,
-    issuer
+    issuer,
+    agentId: readAgentIdClaim(payload),
+    payerAddress: readPayerAddressClaim(payload)
   };
 }

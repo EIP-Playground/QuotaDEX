@@ -22,6 +22,7 @@ type ServerEnv = PublicEnv & {
   ESCROW_CONTRACT_ADDRESS: string;
   GATEWAY_PRIVATE_KEY: string;
   ALLOW_MOCK_PAYMENTS: string;
+  ALLOW_SELLER_SIGNATURE_AUTH: string;
   SELLER_SESSION_TTL_SECONDS: string;
 };
 
@@ -92,6 +93,10 @@ export function getServerEnv(): ServerEnv {
     ESCROW_CONTRACT_ADDRESS: requireEnv("ESCROW_CONTRACT_ADDRESS"),
     GATEWAY_PRIVATE_KEY: requireEnv("GATEWAY_PRIVATE_KEY"),
     ALLOW_MOCK_PAYMENTS: optionalEnv("ALLOW_MOCK_PAYMENTS", "false"),
+    ALLOW_SELLER_SIGNATURE_AUTH: optionalEnv(
+      "ALLOW_SELLER_SIGNATURE_AUTH",
+      "false"
+    ),
     SELLER_SESSION_TTL_SECONDS: optionalEnv("SELLER_SESSION_TTL_SECONDS", "900")
   };
 }
