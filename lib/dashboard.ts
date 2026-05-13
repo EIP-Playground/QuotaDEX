@@ -4,6 +4,7 @@ import type {
   DashboardEventsResponse,
   DashboardMarketResponse,
   DashboardSummaryResponse,
+  DashboardTopSellerRow,
   JobStatus,
   SellerStatus
 } from "@/lib/dashboard-types";
@@ -17,7 +18,15 @@ type SellerRow = {
 };
 
 type JobRow = {
+  id?: string;
+  seller_id?: string;
   status: JobStatus;
+  payment_status?: string | null;
+  amount?: string | number | null;
+  created_at?: string | null;
+  release_tx_hash?: string | null;
+  refund_tx_hash?: string | null;
+  settlement_tx_hash?: string | null;
 };
 
 type EventRow = {
@@ -35,13 +44,109 @@ const SUMMARY_SETTLEMENT: DashboardSummaryResponse["settlement"] = {
 };
 
 const SELLER_STATUSES: SellerStatus[] = ["offline", "idle", "reserved", "busy"];
+const OPEN_JOB_STATUSES = new Set<JobStatus>(["settling", "paid", "running"]);
+const SETTLEMENT_EVENT_TYPES = new Set(["RELEASED", "REFUNDED", "DEMO_DONE"]);
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function normalizePrice(value: string | number): string {
   return typeof value === "number" ? value.toFixed(4) : value;
 }
 
+function parseAmount(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+
+  const amount = typeof value === "number" ? value : Number.parseFloat(value);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatAmount(value: number): string {
+  return Math.max(value, 0).toFixed(4);
+}
+
 function compareTimestampsDesc(a: string, b: string) {
   return new Date(b).getTime() - new Date(a).getTime();
+}
+
+function isWithinLast24Hours(timestamp: string | null | undefined) {
+  if (!timestamp) {
+    return false;
+  }
+
+  const time = new Date(timestamp).getTime();
+  const now = Date.now();
+  return Number.isFinite(time) && time <= now && now - time <= ONE_DAY_MS;
+}
+
+function isReleasedEarningJob(job: JobRow) {
+  return job.status === "done" && job.payment_status === "released" && parseAmount(job.amount) > 0;
+}
+
+function isSettlementEvent(event: Pick<EventRow, "type" | "job_id">) {
+  return Boolean(event.job_id && SETTLEMENT_EVENT_TYPES.has(event.type));
+}
+
+function buildSettlementTimestampByJob(events: Pick<EventRow, "job_id" | "type" | "timestamp">[]) {
+  const timestampByJob = new Map<string, string>();
+
+  for (const event of events) {
+    if (!event.job_id || !isSettlementEvent(event)) {
+      continue;
+    }
+
+    const current = timestampByJob.get(event.job_id);
+    if (!current || compareTimestampsDesc(event.timestamp, current) < 0) {
+      timestampByJob.set(event.job_id, event.timestamp);
+    }
+  }
+
+  return timestampByJob;
+}
+
+function hourStart(timestamp: number) {
+  const date = new Date(timestamp);
+  date.setUTCMinutes(0, 0, 0);
+  return date;
+}
+
+function buildActivity24h(
+  jobRows: JobRow[],
+  settlementTimestampByJob: Map<string, string>
+): DashboardSummaryResponse["activity24h"] {
+  const currentHour = hourStart(Date.now());
+  const startHourTime = currentHour.getTime() - 23 * 60 * 60 * 1000;
+  const buckets = Array.from({ length: 24 }, (_, index) => ({
+    hour: new Date(startHourTime + index * 60 * 60 * 1000).toISOString(),
+    createdJobs: 0,
+    settledJobs: 0
+  }));
+
+  for (const job of jobRows) {
+    if (!job.created_at) {
+      continue;
+    }
+
+    const jobHour = hourStart(new Date(job.created_at).getTime()).getTime();
+    const index = Math.floor((jobHour - startHourTime) / (60 * 60 * 1000));
+    if (index < 0 || index >= buckets.length) {
+      continue;
+    }
+
+    buckets[index].createdJobs += 1;
+  }
+
+  for (const settlementTimestamp of settlementTimestampByJob.values()) {
+    const settlementHour = hourStart(new Date(settlementTimestamp).getTime()).getTime();
+    const index = Math.floor((settlementHour - startHourTime) / (60 * 60 * 1000));
+    if (index < 0 || index >= buckets.length) {
+      continue;
+    }
+
+    buckets[index].settledJobs += 1;
+  }
+
+  return buckets;
 }
 
 function eventTitleForType(type: string): string {
@@ -56,12 +161,16 @@ function eventTitleForType(type: string): string {
       return "Execution started";
     case "MATCHING":
       return "Seller matched";
+    case "DEMO_DONE":
+      return "Demo completed";
     case "SELLER_ONLINE":
       return "Seller online";
     case "SELLER_OFFLINE":
       return "Seller offline";
     case "RELEASED":
       return "Escrow released";
+    case "RELEASE_SKIPPED":
+      return "Release skipped";
     case "REFUNDED":
       return "Refund completed";
     default:
@@ -72,6 +181,7 @@ function eventTitleForType(type: string): string {
 function eventToneForType(type: string): DashboardEventItem["tone"] {
   switch (type) {
     case "DONE":
+    case "DEMO_DONE":
     case "RELEASED":
     case "PAID":
       return "positive";
@@ -95,8 +205,8 @@ export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
     error: eventsError
   }] = await Promise.all([
     supabase.from("sellers").select("status"),
-    supabase.from("jobs").select("status"),
-    supabase.from("events").select("timestamp")
+    supabase.from("jobs").select("status, payment_status, amount, created_at"),
+    supabase.from("events").select("job_id, type, timestamp")
   ]);
 
   if (sellersError) {
@@ -128,12 +238,20 @@ export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
     sellerStatus[seller.status] += 1;
   }
 
-  const openJobs = ((jobs ?? []) as JobRow[]).filter(
-    (job) => job.status === "paid" || job.status === "running"
-  ).length;
-  const completedJobs = ((jobs ?? []) as JobRow[]).filter((job) => job.status === "done").length;
-  const failedJobs = ((jobs ?? []) as JobRow[]).filter((job) => job.status === "failed").length;
-  const latestTimestamp = ((events ?? []) as Pick<EventRow, "timestamp">[])
+  const jobRows = (jobs ?? []) as JobRow[];
+  const eventRows = (events ?? []) as Pick<EventRow, "job_id" | "type" | "timestamp">[];
+  const settlementTimestampByJob = buildSettlementTimestampByJob(eventRows);
+  const openJobs = jobRows.filter((job) => OPEN_JOB_STATUSES.has(job.status)).length;
+  const completedJobs = jobRows.filter((job) => job.status === "done").length;
+  const failedJobs = jobRows.filter((job) => job.status === "failed").length;
+  const volume24h = jobRows
+    .filter((job) => {
+      const settlementTimestamp = job.id ? settlementTimestampByJob.get(job.id) : null;
+      return isWithinLast24Hours(settlementTimestamp) && isReleasedEarningJob(job);
+    })
+    .reduce((total, job) => total + parseAmount(job.amount), 0);
+  const activity24h = buildActivity24h(jobRows, settlementTimestampByJob);
+  const latestTimestamp = eventRows
     .map((event) => event.timestamp)
     .sort(compareTimestampsDesc)[0] ?? null;
 
@@ -142,8 +260,10 @@ export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
       activeSellers: sellerStatus.idle + sellerStatus.reserved + sellerStatus.busy,
       openJobs,
       completedJobs,
-      failedJobs
+      failedJobs,
+      volume24h
     },
+    activity24h,
     sellerStatus,
     settlement: SUMMARY_SETTLEMENT,
     updatedAt: latestTimestamp
@@ -152,26 +272,159 @@ export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
 
 export async function getDashboardMarket(): Promise<DashboardMarketResponse> {
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("sellers")
-    .select("id, capability, price_per_task, status, updated_at");
+  const settlementSince = new Date(Date.now() - ONE_DAY_MS).toISOString();
+  const [{ data: sellers, error: sellersError }, {
+    data: events,
+    error: eventsError
+  }] =
+    await Promise.all([
+      supabase.from("sellers").select("id, capability, price_per_task, status, updated_at"),
+      supabase
+        .from("events")
+        .select("job_id, type, timestamp")
+        .in("type", Array.from(SETTLEMENT_EVENT_TYPES))
+        .gte("timestamp", settlementSince)
+        .order("timestamp", { ascending: false })
+        .limit(200)
+    ]);
 
-  if (error) {
-    throw new Error(`Failed to load dashboard market: ${error.message}`);
+  if (sellersError) {
+    throw new Error(`Failed to load dashboard market sellers: ${sellersError.message}`);
   }
 
-  const rows = ((data ?? []) as SellerRow[])
+  if (eventsError) {
+    throw new Error(`Failed to load dashboard market events: ${eventsError.message}`);
+  }
+
+  const sellerRows = (sellers ?? []) as SellerRow[];
+  const eventRows = (events ?? []) as Pick<EventRow, "job_id" | "type" | "timestamp">[];
+  const settlementJobIds = Array.from(
+    new Set(eventRows.flatMap((event) => (event.job_id ? [event.job_id] : [])))
+  );
+  const { data: jobs, error: jobsError } =
+    settlementJobIds.length > 0
+      ? await supabase
+          .from("jobs")
+          .select(
+            "id, seller_id, status, payment_status, amount, created_at, release_tx_hash, refund_tx_hash, settlement_tx_hash"
+          )
+          .in("id", settlementJobIds)
+      : { data: [], error: null };
+
+  if (jobsError) {
+    throw new Error(`Failed to load dashboard market jobs: ${jobsError.message}`);
+  }
+
+  const jobRows = (jobs ?? []) as JobRow[];
+  const sellerById = new Map(sellerRows.map((seller) => [seller.id, seller]));
+  const settlementTimestampByJob = buildSettlementTimestampByJob(eventRows);
+  const aggregateBySeller = new Map<
+    string,
+    {
+      completedJobs24h: number;
+      totalEarned24h: number;
+      latestJobAt: string | null;
+    }
+  >();
+
+  for (const job of jobRows) {
+    const settlementTimestamp = job.id ? settlementTimestampByJob.get(job.id) : null;
+    if (!job.seller_id || !isWithinLast24Hours(settlementTimestamp) || !isReleasedEarningJob(job)) {
+      continue;
+    }
+
+    const aggregate = aggregateBySeller.get(job.seller_id) ?? {
+      completedJobs24h: 0,
+      totalEarned24h: 0,
+      latestJobAt: null
+    };
+
+    aggregate.completedJobs24h += 1;
+    aggregate.totalEarned24h += parseAmount(job.amount);
+    if (
+      settlementTimestamp &&
+      (!aggregate.latestJobAt || compareTimestampsDesc(settlementTimestamp, aggregate.latestJobAt) < 0)
+    ) {
+      aggregate.latestJobAt = settlementTimestamp;
+    }
+    aggregateBySeller.set(job.seller_id, aggregate);
+  }
+
+  const rows = sellerRows
     .sort((left, right) => compareTimestampsDesc(left.updated_at, right.updated_at))
     .slice(0, 12)
-    .map((seller) => ({
-      sellerId: seller.id,
-      capability: seller.capability,
-      pricePerTask: normalizePrice(seller.price_per_task),
-      status: seller.status,
-      updatedAt: seller.updated_at
-    }));
+    .map((seller) => {
+      const aggregate = aggregateBySeller.get(seller.id);
 
-  return { rows };
+      return {
+        sellerId: seller.id,
+        capability: seller.capability,
+        pricePerTask: normalizePrice(seller.price_per_task),
+        status: seller.status,
+        updatedAt: seller.updated_at,
+        completedJobs24h: aggregate?.completedJobs24h ?? 0,
+        totalEarned24h: formatAmount(aggregate?.totalEarned24h ?? 0),
+        latestJobAt: aggregate?.latestJobAt ?? null
+      };
+    });
+
+  const topSellers: DashboardTopSellerRow[] = Array.from(aggregateBySeller.entries())
+    .map(([sellerId, aggregate]) => {
+      const seller = sellerById.get(sellerId);
+
+      return {
+        sellerId,
+        capability: seller?.capability ?? "unknown",
+        status: seller?.status ?? "offline",
+        completedJobs24h: aggregate.completedJobs24h,
+        totalEarned24h: formatAmount(aggregate.totalEarned24h),
+        latestJobAt: aggregate.latestJobAt
+      };
+    })
+    .sort((left, right) => {
+      const volumeDelta = Number.parseFloat(right.totalEarned24h) - Number.parseFloat(left.totalEarned24h);
+      if (volumeDelta !== 0) {
+        return volumeDelta;
+      }
+
+      return compareTimestampsDesc(left.latestJobAt ?? "", right.latestJobAt ?? "");
+    })
+    .slice(0, 5);
+
+  const recentSettlements = jobRows
+    .filter((job) => {
+      const settlementTimestamp = job.id ? settlementTimestampByJob.get(job.id) : null;
+      const isSettlement = job.payment_status === "released" || job.payment_status === "refunded";
+      return Boolean(job.id && job.seller_id && isWithinLast24Hours(settlementTimestamp) && isSettlement);
+    })
+    .sort((left, right) =>
+      compareTimestampsDesc(
+        left.id ? settlementTimestampByJob.get(left.id) ?? "" : "",
+        right.id ? settlementTimestampByJob.get(right.id) ?? "" : ""
+      )
+    )
+    .slice(0, 5)
+    .map((job) => {
+      const type: "released" | "refunded" = job.payment_status === "refunded" ? "refunded" : "released";
+      const seller = job.seller_id ? sellerById.get(job.seller_id) : undefined;
+
+      return {
+        id: job.id ?? "",
+        jobId: job.id ?? "",
+        sellerId: job.seller_id ?? "",
+        capability: seller?.capability ?? "unknown",
+        type,
+        amount: formatAmount(parseAmount(job.amount)),
+        txHash:
+          type === "refunded"
+            ? job.refund_tx_hash ?? job.settlement_tx_hash ?? ""
+            : job.release_tx_hash ?? job.settlement_tx_hash ?? "",
+        timestamp: job.id ? settlementTimestampByJob.get(job.id) ?? "" : ""
+      };
+    })
+    .filter((settlement) => settlement.txHash);
+
+  return { rows, topSellers, recentSettlements };
 }
 
 export async function getDashboardEvents(): Promise<DashboardEventsResponse> {

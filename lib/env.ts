@@ -22,6 +22,10 @@ type ServerEnv = PublicEnv & {
   ALLOW_MOCK_PAYMENTS: string;
 };
 
+type SupabaseServerEnv = PublicEnv & {
+  SUPABASE_SERVICE_ROLE_KEY: string;
+};
+
 function requireEnv(name: string): string {
   const value = process.env[name];
 
@@ -42,6 +46,13 @@ export function getPublicEnv(): PublicEnv {
   return {
     NEXT_PUBLIC_SUPABASE_URL: requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  };
+}
+
+export function getSupabaseServerEnv(): SupabaseServerEnv {
+  return {
+    ...getPublicEnv(),
+    SUPABASE_SERVICE_ROLE_KEY: requireEnv("SUPABASE_SERVICE_ROLE_KEY")
   };
 }
 
