@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const makeCtxStub = () =>
@@ -29,6 +29,7 @@ const makeCtxStub = () =>
 
 describe("MarketplacePage", () => {
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     HTMLCanvasElement.prototype.getContext = vi.fn(
@@ -38,6 +39,8 @@ describe("MarketplacePage", () => {
 
   afterEach(() => {
     HTMLCanvasElement.prototype.getContext = originalGetContext;
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
   });
 
   it("renders the global compute monitor shell with live panels", async () => {
@@ -62,5 +65,81 @@ describe("MarketplacePage", () => {
     expect(
       screen.getByRole("heading", { name: /recent escrow settlements/i })
     ).toBeInTheDocument();
+  });
+
+  it("shows cumulative live seller earnings instead of the seller task price", async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/dashboard/summary")) {
+        return Response.json({
+          metrics: {
+            activeSellers: 1,
+            openJobs: 0,
+            completedJobs: 3,
+            failedJobs: 0,
+            volume24h: 0.003
+          }
+        });
+      }
+
+      if (url.endsWith("/api/v1/dashboard/market")) {
+        return Response.json({
+          rows: [
+            {
+              sellerId: "0x18dd91abcd318690",
+              capability: "gpt-4o",
+              pricePerTask: "0.0010",
+              status: "idle",
+              updatedAt: "2026-05-13T09:09:46.633Z",
+              completedJobs24h: 3,
+              totalEarned24h: "0.0030",
+              latestJobAt: "2026-05-13T09:09:35.844Z"
+            }
+          ],
+          topSellers: [
+            {
+              sellerId: "0x18dd91abcd318690",
+              capability: "gpt-4o",
+              status: "idle",
+              completedJobs24h: 3,
+              totalEarned24h: "0.0030",
+              latestJobAt: "2026-05-13T09:09:35.844Z"
+            }
+          ],
+          recentSettlements: [
+            {
+              id: "job-1",
+              jobId: "job-1",
+              sellerId: "0x18dd91abcd318690",
+              capability: "gpt-4o",
+              type: "released",
+              amount: "0.0010",
+              txHash: "0x525cad0000000def85",
+              timestamp: "2026-05-13T09:09:46.376Z"
+            }
+          ]
+        });
+      }
+
+      if (url.endsWith("/api/v1/dashboard/events")) {
+        return Response.json({ items: [] });
+      }
+
+      return Response.json({});
+    }) as typeof fetch;
+
+    const { default: MarketplacePage } = await import("@/app/marketplace/page");
+    render(<MarketplacePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /live/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/live · kite testnet/i)).toBeInTheDocument();
+      expect(screen.getByText("0.0030 USDT")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/gpt-4o · 3 jobs settled/i)).toBeInTheDocument();
+    expect(screen.getByText("+0.0010")).toBeInTheDocument();
   });
 });

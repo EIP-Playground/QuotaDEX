@@ -35,7 +35,38 @@ type Txn = {
   cap: string;
 };
 
-type MarketRow = { sellerId: string; capability: string; pricePerTask: string; status: string };
+type MarketRow = {
+  sellerId: string;
+  capability: string;
+  pricePerTask: string;
+  status: string;
+  completedJobs24h?: number;
+  totalEarned24h?: string;
+  latestJobAt?: string | null;
+};
+type TopSellerRow = {
+  sellerId: string;
+  capability: string;
+  status: string;
+  completedJobs24h: number;
+  totalEarned24h: string;
+  latestJobAt: string | null;
+};
+type SettlementRow = {
+  id: string;
+  jobId: string;
+  sellerId: string;
+  capability: string;
+  type: "released" | "refunded";
+  amount: string;
+  txHash: string;
+  timestamp: string;
+};
+type ActivityBucket = {
+  hour: string;
+  createdJobs: number;
+  settledJobs: number;
+};
 type EventItem = { id: string; type: string; title: string; message: string; timestamp: string; jobId: string | null; tone: string };
 
 const CAPS = ["GPT-4-Turbo", "Llama-3 8B", "Mixtral 8x7B", "Claude Haiku", "Gemini Pro", "Llama-3 70B"];
@@ -72,6 +103,35 @@ function makeTxn(offsetSec: number, seed: number): Txn {
   };
 }
 
+function shortHash(value: string) {
+  if (!value) {
+    return "—";
+  }
+
+  return `${value.slice(0, 8)}…${value.slice(-4)}`;
+}
+
+function formatVolume(value: number, mode: "demo" | "live") {
+  if (mode === "demo" || value >= 1000) {
+    return `${(value / 1000).toFixed(1)}k`;
+  }
+
+  if (value >= 1) {
+    return value.toFixed(2);
+  }
+
+  return value > 0 ? value.toFixed(4) : "0";
+}
+
+function formatHourLabel(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "—";
+  }
+
+  return `${String(date.getHours()).padStart(2, "0")}:00`;
+}
+
 function Sparkline({ data, color = "#c8a435" }: { data: number[]; color?: string }) {
   const W = 100;
   const H = 32;
@@ -88,8 +148,19 @@ function Sparkline({ data, color = "#c8a435" }: { data: number[]; color?: string
   );
 }
 
-function DemandChart() {
+function DemandChart({ activity, mode }: { activity: ActivityBucket[]; mode: "demo" | "live" }) {
   const { demand, supply, max } = useMemo(() => {
+    if (mode === "live" && activity.length > 0) {
+      const created = activity.map((bucket) => bucket.createdJobs);
+      const settled = activity.map((bucket) => bucket.settledJobs);
+
+      return {
+        demand: created,
+        supply: settled,
+        max: Math.max(1, ...created, ...settled) + 1
+      };
+    }
+
     const dem = Array.from(
       { length: 48 },
       (_, i) => 50 + Math.sin(i * 0.2) * 30 + Math.sin(i * 0.7) * 12 + Math.random() * 6
@@ -99,7 +170,7 @@ function DemandChart() {
       (_, i) => 55 + Math.sin(i * 0.18 + 1.5) * 28 + Math.sin(i * 0.6) * 10 + Math.random() * 5
     );
     return { demand: dem, supply: sup, max: Math.max(...dem, ...sup) + 10 };
-  }, []);
+  }, [activity, mode]);
 
   const W = 600;
   const H = 180;
@@ -186,6 +257,16 @@ export function MarketplaceClient() {
         amount: (0.002 + Math.random() * 0.005).toFixed(3)
       }))
   );
+  const [topSellers, setTopSellers] = useState<TopSellerRow[]>([]);
+  const [activity24h, setActivity24h] = useState<ActivityBucket[]>([]);
+  const chartAxisLabels = useMemo(() => {
+    if (mode !== "live" || activity24h.length === 0) {
+      return ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "24:00"];
+    }
+
+    const indexes = [0, 4, 8, 12, 16, 20, activity24h.length - 1];
+    return indexes.map((index) => formatHourLabel(activity24h[Math.min(index, activity24h.length - 1)].hour));
+  }, [activity24h, mode]);
 
   // Demo mode: animated mock data
   useEffect(() => {
@@ -245,9 +326,10 @@ export function MarketplaceClient() {
         setStats({
           agents: summary.metrics?.activeSellers ?? 0,
           price: avgPrice,
-          vol: Math.round((summary.metrics?.completedJobs ?? 0) * avgPrice * 1000),
+          vol: summary.metrics?.volume24h ?? (summary.metrics?.completedJobs ?? 0) * avgPrice,
           jobs: summary.metrics?.completedJobs ?? 0
         });
+        setActivity24h(summary.activity24h ?? []);
 
         setOrderBook(
           rows.slice(0, 9).map((r) => ({
@@ -271,12 +353,15 @@ export function MarketplaceClient() {
           }))
         );
 
-        const settled = items.filter((e) => e.type === "RELEASED" || e.type === "REFUNDED");
+        const sellers: TopSellerRow[] = market.topSellers ?? [];
+        setTopSellers(sellers);
+
+        const settled: SettlementRow[] = market.recentSettlements ?? [];
         setSettlements(
-          settled.slice(0, 5).map((e) => ({
-            id: `0x${e.id.slice(0, 8)}…${e.id.slice(-4)}`,
-            cap: `${e.type} · ${e.jobId?.slice(0, 8) ?? "—"}`,
-            amount: "—"
+          settled.slice(0, 5).map((settlement) => ({
+            id: shortHash(settlement.txHash),
+            cap: `${settlement.type} · ${settlement.capability}`,
+            amount: settlement.type === "refunded" ? `-${settlement.amount}` : settlement.amount
           }))
         );
       } catch {
@@ -306,7 +391,7 @@ export function MarketplaceClient() {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <ModeSwitch mode={mode} onChange={setMode} />
               <div className="dashLive">
-                {mode === "live" ? "LIVE · Kite Mainnet" : "DEMO · Simulated"}
+                {mode === "live" ? "LIVE · Kite Testnet" : "DEMO · Simulated"}
               </div>
             </div>
           </header>
@@ -315,7 +400,7 @@ export function MarketplaceClient() {
             <article className="stat">
               <div className="statLabel"><TbUsers /> Active Agents</div>
               <div className="statVal">{stats.agents.toLocaleString()}</div>
-              <div className="statDelta">+12 in last hour</div>
+              <div className="statDelta">{mode === "live" ? "idle + reserved + busy" : "+12 in last hour"}</div>
               <Sparkline data={[40, 45, 48, 50, 52, 58, 62, 64, 66, 70, 72, 75]} />
             </article>
             <article className="stat">
@@ -324,21 +409,21 @@ export function MarketplaceClient() {
                 {stats.price.toFixed(4)}
                 <span className="small">USDT</span>
               </div>
-              <div className="statDelta down">−2.4% vs yesterday</div>
+              <div className="statDelta down">{mode === "live" ? "registered seller mean" : "−2.4% vs yesterday"}</div>
               <Sparkline data={[3, 3.2, 2.9, 2.7, 2.5, 2.6, 2.4, 2.5, 2.3, 2.2, 2.1, 2.0]} />
             </article>
             <article className="stat">
               <div className="statLabel"><TbChartBar /> 24h Volume</div>
               <div className="statVal">
-                {(stats.vol / 1000).toFixed(1)}k<span className="small">USDT</span>
+                {formatVolume(stats.vol, mode)}<span className="small">USDT</span>
               </div>
-              <div className="statDelta">+18.3% vs yesterday</div>
+              <div className="statDelta">{mode === "live" ? "released job amount" : "+18.3% vs yesterday"}</div>
               <Sparkline data={[50, 55, 60, 65, 62, 70, 75, 80, 85, 90, 92, 95]} />
             </article>
             <article className="stat">
-              <div className="statLabel"><TbCircleCheck /> Total Jobs Settled</div>
+              <div className="statLabel"><TbCircleCheck /> Completed Jobs</div>
               <div className="statVal">{stats.jobs >= 1e6 ? `${(stats.jobs / 1e6).toFixed(2)}M+` : stats.jobs.toLocaleString()}</div>
-              <div className="statDelta">+4,231 today</div>
+              <div className="statDelta">{mode === "live" ? "all-time completed jobs" : "+4,231 today"}</div>
               <Sparkline data={[30, 35, 40, 42, 48, 55, 60, 68, 74, 80, 86, 92]} />
             </article>
           </section>
@@ -369,7 +454,7 @@ export function MarketplaceClient() {
                       <tr key={s.id}>
                         <td>
                           <span className="obSeller">
-                            0x{s.id.slice(0, 4)}…{s.id.slice(-2)}
+                            {shortHash(s.id)}
                           </span>
                         </td>
                         <td style={{ color: "var(--muted)" }}>{s.cap}</td>
@@ -421,12 +506,15 @@ export function MarketplaceClient() {
           <section className="dashGrid">
             <article className="panel chartPanel" style={{ gridColumn: "1 / 3" }}>
               <h2>
-                <span><TbChartLine /> Network Demand vs Supply</span> <span className="hint">last 24 hours</span>
+                <span>
+                  <TbChartLine /> {mode === "live" ? "Job Activity" : "Network Demand vs Supply"}
+                </span>{" "}
+                <span className="hint">last 24 hours</span>
               </h2>
               <div className="chartLegend">
                 <span>
                   <i style={{ background: "#c8a435" }} />
-                  Demand
+                  {mode === "live" ? "Created jobs" : "Demand"}
                 </span>
                 <span>
                   <i
@@ -435,18 +523,14 @@ export function MarketplaceClient() {
                       borderTop: "1px dashed #3a4a1a"
                     }}
                   />
-                  Supply
+                  {mode === "live" ? "Settled jobs" : "Supply"}
                 </span>
               </div>
-              <DemandChart />
+              <DemandChart activity={activity24h} mode={mode} />
               <div className="chartAxisLabels">
-                <span>00:00</span>
-                <span>04:00</span>
-                <span>08:00</span>
-                <span>12:00</span>
-                <span>16:00</span>
-                <span>20:00</span>
-                <span>24:00</span>
+                {chartAxisLabels.map((label, index) => (
+                  <span key={`${label}-${index}`}>{label}</span>
+                ))}
               </div>
             </article>
           </section>
@@ -462,17 +546,25 @@ export function MarketplaceClient() {
                     No sellers registered
                   </div>
                 ) : mode === "live" ? (
-                  orderBook.slice(0, 5).map((s, i) => (
-                    <div key={s.id} className="agent">
-                      <div>
-                        <div className="agentId">
-                          0x{s.id.slice(0, 6)}…{s.id.slice(-4)}
-                        </div>
-                        <div className="agentCap">{s.cap} · {s.status}</div>
-                      </div>
-                      <div className="agentScore">{s.price} USDT</div>
+                  topSellers.length === 0 ? (
+                    <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>
+                      No settled seller volume
                     </div>
-                  ))
+                  ) : (
+                    topSellers.map((seller) => (
+                      <div key={seller.sellerId} className="agent">
+                        <div>
+                          <div className="agentId">
+                            {shortHash(seller.sellerId)}
+                          </div>
+                          <div className="agentCap">
+                            {seller.capability} · {seller.completedJobs24h} jobs settled
+                          </div>
+                        </div>
+                        <div className="agentScore">{seller.totalEarned24h} USDT</div>
+                      </div>
+                    ))
+                  )
                 ) : (
                   TOP_SELLERS.map((a, i) => (
                     <div key={a} className="agent">
@@ -505,7 +597,9 @@ export function MarketplaceClient() {
                           {mode === "live" ? s.cap : `Escrow.release · ${s.cap}`}
                         </div>
                       </div>
-                      <div className="agentScore">{s.amount === "—" ? "—" : `+${s.amount}`}</div>
+                      <div className="agentScore">
+                        {s.amount === "—" ? "—" : s.amount.startsWith("-") ? s.amount : `+${s.amount}`}
+                      </div>
                     </div>
                   ))
                 )}
