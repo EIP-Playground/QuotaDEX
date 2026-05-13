@@ -9,16 +9,18 @@ function readSkill(name: string) {
 }
 
 describe("QuotaDEX agent skills", () => {
-  it("do not assume deployment environment variables or include smoke tests", () => {
+  it("use the public QuotaDEX Gateway URL without deployment env placeholders", () => {
     const buyer = readSkill("quotadex-buyer");
     const seller = readSkill("quotadex-seller");
 
     for (const skill of [buyer, seller]) {
+      expect(skill).toMatch(/https:\/\/quota-dex\.vercel\.app/);
       expect(skill).not.toMatch(/GATEWAY_BASE_URL/);
+      expect(skill).not.toMatch(/<gateway_url>/);
+      expect(skill).not.toMatch(/operator-provided Gateway URL/i);
       expect(skill).not.toMatch(/Production Smoke Test/i);
       expect(skill).not.toMatch(/export GATEWAY/i);
       expect(skill).toMatch(/Required inputs from the operator/);
-      expect(skill).toMatch(/Do not assume the Gateway URL/);
     }
   });
 

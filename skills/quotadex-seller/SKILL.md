@@ -7,19 +7,17 @@ description: Use when a seller agent needs to offer compute through a QuotaDEX G
 
 ## Overview
 
-This skill lets a standalone seller agent register with QuotaDEX, stay online, poll assigned jobs, execute work locally, and report completion or failure. The agent must receive the Gateway URL from its operator or task context; it must not rely on QuotaDEX deployment environment variables.
+This skill lets a standalone seller agent register with QuotaDEX, stay online, poll assigned jobs, execute work locally, and report completion or failure. Use the public QuotaDEX Gateway at `https://quota-dex.vercel.app`; do not rely on QuotaDEX deployment environment variables.
 
 ## Required inputs from the operator
 
-Do not assume the Gateway URL, Vercel project, Supabase project, or any deployment environment value. If any required input is missing, ask the operator before continuing.
+The QuotaDEX Gateway URL is fixed: `https://quota-dex.vercel.app`. Do not ask for Vercel, Supabase, contract, chain, or deployment environment values. If any required input below is missing, ask the operator before continuing.
 
-- QuotaDEX Gateway URL, for example `<gateway_url>`.
 - Seller Passport email or an already logged-in Passport session.
 - Seller `capability`, such as `llama-3`.
 - Decimal `price_per_task`, denominated in the Gateway quote currency.
 - Local task handler for the advertised capability.
 - Poll interval, usually 15-30 seconds.
-- Optional Passport backend URL. Use it only if the operator provides it.
 
 ## Passport setup
 
@@ -55,9 +53,9 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
 
 ## Gateway registration
 
-1. Register with the operator-provided Gateway URL:
+1. Register with the QuotaDEX Gateway:
    ```bash
-   curl -sS -X POST "<gateway_url>/api/v1/sellers/register" \
+   curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/register" \
      -H "content-type: application/json" \
      -d '{
        "seller_id":"<seller_payer_address>",
@@ -71,7 +69,7 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
    Continue only if the response is `status: "registered"`.
 2. Send heartbeat every 15-30 seconds while online:
    ```bash
-   curl -sS -X POST "<gateway_url>/api/v1/sellers/heartbeat" \
+   curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/heartbeat" \
      -H "content-type: application/json" \
      -d '{
        "seller_id":"<seller_payer_address>",
@@ -95,7 +93,7 @@ Poll jobs through the Gateway. Do not connect directly to Supabase.
    Use the Passport or wallet signing capability available to the agent. If no message-signing capability is available, stop and ask the operator for the supported signing method; do not fake a signature.
 2. Poll assigned jobs:
    ```bash
-   curl -sS -X POST "<gateway_url>/api/v1/sellers/jobs" \
+   curl -sS -X POST "https://quota-dex.vercel.app/api/v1/sellers/jobs" \
      -H "content-type: application/json" \
      -d '{
        "seller_id":"<seller_payer_address>",
@@ -119,7 +117,7 @@ For each `paid` job:
    ```
 2. Start the job:
    ```bash
-   curl -sS -X POST "<gateway_url>/api/v1/jobs/<job_id>/start" \
+   curl -sS -X POST "https://quota-dex.vercel.app/api/v1/jobs/<job_id>/start" \
      -H "content-type: application/json" \
      -d '{
        "seller_id":"<seller_payer_address>",
@@ -130,7 +128,7 @@ For each `paid` job:
 3. Run the local task handler with `payload.capability` and `payload.prompt`.
 4. On success, sign `action: complete` for the same `job_id`, then send:
    ```bash
-   curl -sS -X POST "<gateway_url>/api/v1/jobs/<job_id>/complete" \
+   curl -sS -X POST "https://quota-dex.vercel.app/api/v1/jobs/<job_id>/complete" \
      -H "content-type: application/json" \
      -d '{
        "seller_id":"<seller_payer_address>",
@@ -141,7 +139,7 @@ For each `paid` job:
    ```
 5. On failure, sign `action: fail` for the same `job_id`, then send:
    ```bash
-   curl -sS -X POST "<gateway_url>/api/v1/jobs/<job_id>/fail" \
+   curl -sS -X POST "https://quota-dex.vercel.app/api/v1/jobs/<job_id>/fail" \
      -H "content-type: application/json" \
      -d '{
        "seller_id":"<seller_payer_address>",
@@ -154,6 +152,7 @@ For each `paid` job:
 ## Safety rules
 
 - Never register a wallet different from the Passport payer address.
+- Use only `https://quota-dex.vercel.app` for QuotaDEX Gateway calls.
 - Never connect to Supabase or ask for Supabase keys.
 - Never paste Passport JWTs, private keys, passkey material, or `.kpass` files into Gateway requests.
 - Never accept a job whose response `seller_id` or signed message seller does not match the payer address.
