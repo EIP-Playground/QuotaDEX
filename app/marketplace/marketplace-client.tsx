@@ -283,7 +283,9 @@ export function MarketplaceClient() {
   );
   const [topSellers, setTopSellers] = useState<TopSellerRow[]>([]);
   const [activity24h, setActivity24h] = useState<ActivityBucket[]>([]);
-  const dashboardCurrency = mode === "demo" ? "USDT" : "USDC";
+  const isLiveTestnet = mode === "live" && liveNetwork === "testnet";
+  const dashboardCurrency =
+    mode === "demo" ? "USDT" : liveNetwork === "mainnet" ? "USDC" : "USDT/USDC";
   const dashboardBadge =
     mode === "demo"
       ? "DEMO · Demo Testnet"
@@ -292,10 +294,10 @@ export function MarketplaceClient() {
         : "LIVE · Live Testnet";
   const dashboardCopy =
     mode === "demo"
-      ? "Simulated one-click demo data on Kite Testnet"
+      ? "Mock dashboard data only; real testnet jobs appear under Live Testnet"
       : liveNetwork === "mainnet"
         ? "Production Agent activity on Kite Mainnet"
-        : "Real Agent test traffic on Kite Testnet";
+        : "All Kite Testnet jobs, including one-click Demo runs and live Agent traffic";
   const chartAxisLabels = useMemo(() => {
     if (mode !== "live" || activity24h.length === 0) {
       return ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "24:00"];
@@ -651,13 +653,11 @@ export function MarketplaceClient() {
         <SiteFooter />
       </div>
 
-      <Link
-        href="/demo"
-        className={`tryItBtn${mode === "live" ? " hidden" : ""}`}
-        aria-hidden={mode === "live"}
-      >
-        <TbPlayerPlay /> Try It
-      </Link>
+      {isLiveTestnet ? (
+        <Link href="/demo" className="tryItBtn">
+          <TbPlayerPlay /> Try It
+        </Link>
+      ) : null}
     </>
   );
 }

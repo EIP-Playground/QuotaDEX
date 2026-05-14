@@ -11,8 +11,6 @@ type SiteHeaderProps = {
 const LINKS = [
   { href: "/", label: "Home", key: "landing" as const },
   { href: "/marketplace", label: "Marketplace", key: "marketplace" as const },
-  { href: "#", label: "Developers", key: "developers" as const },
-  { href: "#", label: "Ecosystem", key: "ecosystem" as const },
   { href: "/about", label: "About", key: "about" as const }
 ];
 
@@ -65,24 +63,15 @@ export function SiteHeader({ current }: SiteHeaderProps) {
           {LINKS.map((item) => {
             const isActive = item.key === current;
             const className = `siteNavLink${isActive ? " active" : ""}`;
-            if (item.key === "landing" || item.key === "marketplace" || item.key === "about") {
-              return (
-                <li key={item.key}>
-                  <Link
-                    aria-current={isActive ? "page" : undefined}
-                    className={className}
-                    href={item.href}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            }
             return (
               <li key={item.key}>
-                <a className={className} href={item.href}>
+                <Link
+                  aria-current={isActive ? "page" : undefined}
+                  className={className}
+                  href={item.href}
+                >
                   {item.label}
-                </a>
+                </Link>
               </li>
             );
           })}

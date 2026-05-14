@@ -148,7 +148,7 @@ describe("MarketplacePage", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/live · live testnet/i)).toBeInTheDocument();
-      expect(screen.getByText("0.0030 USDC")).toBeInTheDocument();
+      expect(screen.getByText("0.0030 USDT/USDC")).toBeInTheDocument();
     });
 
     expect(screen.getByText(/gpt-4o · 3 jobs settled/i)).toBeInTheDocument();
@@ -206,5 +206,59 @@ describe("MarketplacePage", () => {
         expect.stringContaining("mode=live&network=mainnet")
       );
     });
+  });
+
+  it("places the one-click demo entry point under Live Testnet only", async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes("/api/v1/dashboard/summary")) {
+        return Response.json({
+          metrics: {
+            activeSellers: 0,
+            openJobs: 0,
+            completedJobs: 0,
+            failedJobs: 0,
+            volume24h: 0
+          },
+          activity24h: []
+        });
+      }
+
+      if (url.includes("/api/v1/dashboard/market")) {
+        return Response.json({
+          rows: [],
+          topSellers: [],
+          recentSettlements: []
+        });
+      }
+
+      if (url.includes("/api/v1/dashboard/events")) {
+        return Response.json({ items: [] });
+      }
+
+      return Response.json({});
+    }) as typeof fetch;
+
+    const { default: MarketplacePage } = await import("@/app/marketplace/page");
+    render(<MarketplacePage />);
+
+    expect(screen.queryByRole("link", { name: /try it/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /live/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/live · live testnet/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("link", { name: /try it/i })).toHaveAttribute("href", "/demo");
+
+    fireEvent.click(screen.getByRole("button", { name: /mainnet/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/live · live mainnet/i)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("link", { name: /try it/i })).not.toBeInTheDocument();
   });
 });
