@@ -7,7 +7,7 @@ description: Use when a buyer agent needs to purchase compute from a QuotaDEX Ga
 
 ## Overview
 
-This skill lets a standalone buyer agent buy one Live compute task through QuotaDEX using Kite Passport and x402. Use the public QuotaDEX Gateway at `https://quota-dex.vercel.app`; do not rely on QuotaDEX deployment environment variables. Live buyer payments use the `live-mainnet` profile, Kite Mainnet, and USDC.
+This skill lets a standalone buyer agent buy one Live compute task through QuotaDEX using Kite Passport and x402 when available, or the temporary direct escrow fallback while Kite service discovery is blocked. Use the public QuotaDEX Gateway at `https://quota-dex.vercel.app`; do not rely on QuotaDEX deployment environment variables. Live buyer payments use the `live-mainnet` profile, Kite Mainnet, and USDC.
 
 ## Required inputs from the operator
 
@@ -88,7 +88,8 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
    - `currency` must be `USDC`.
    - `accepts[0].payTo` must match the Gateway response `pay_to`.
    - `accepts[0].asset` must match the Gateway response `payment_asset`.
-5. Pay and verify through Passport. Use the exact quote payload from step 3:
+   Known limitation: `quota-dex.vercel.app` is not yet registered in Kite service discovery. `kpass agent:session execute` may return `payment_target_forbidden` with exit code 6 and a message like `host not allowed by discovery`. If that happens, skip Step 5 and go directly to Step 6. Do not attempt to extract JWT values, manually build an `X-PAYMENT` header, or call any manual Passport backend API.
+5. x402 path, only when Kite service discovery allows this Gateway. Use the exact quote payload from step 3:
    ```bash
    kpass agent:session execute \
      --url "https://quota-dex.vercel.app/api/v1/jobs/verify" \
@@ -107,7 +108,19 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      --output json
    ```
    Expect `job_id`, `payment_mode: "x402-escrow"`, `settlement_tx_hash`, and `escrow_registration_tx_hash`.
-6. Temporary direct escrow transfer fallback. Prefer the x402 `X-PAYMENT` flow above. Use this fallback only if x402 cannot be used, the Gateway returns `X_PAYMENT_REQUIRED`, and the operator explicitly confirms direct escrow transfer fallback is allowed for this purchase. Do not use it automatically.
+6. Temporary direct escrow transfer fallback. This is the current practical path while QuotaDEX is blocked by Kite service discovery. Ask the operator once per purchase before using it; do not ask repeatedly for the same quote.
+
+   Use this fallback if any of these happen:
+   - `payment_target_forbidden`, especially `host not allowed by discovery`.
+   - `X_PAYMENT_REQUIRED`.
+   - `GATEWAY_CONFIG_MISSING`.
+
+   Before sending funds, check recent activity for an existing same-amount transfer to the same escrow address:
+   ```bash
+   kpass activity --output json
+   ```
+   If activity already shows a wallet transfer with the quote amount and quote `pay_to`, do not send again. Verify with the existing tx hash instead.
+
    ```bash
    QUOTE_RESPONSE='<paste_the_exact_quote_response_json_from_step_3>'
    DIRECT_PAYMENT_TX="$(kpass wallet send \
@@ -133,10 +146,19 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      }'
    ```
    Expect `job_id`, `payment_mode: "direct-escrow"`, `settlement_tx_hash`, and `escrow_registration_tx_hash`. The sent token, receiver, and amount must come from the quote. Use the exact quote amount; do not guess an amount. Do not use `0.01 USDC` for buyer payment unless the quote amount is exactly `0.01`.
-7. Poll the job until it reaches `done` or `failed`:
+7. Poll the job until it reaches `done` or `failed`. Poll every 5 seconds, up to 24 times, for a 2 minutes foreground wait:
    ```bash
-   curl -sS "https://quota-dex.vercel.app/api/v1/jobs/<job_id>"
+   for attempt in $(seq 1 24); do
+     JOB_RESPONSE="$(curl -sS "https://quota-dex.vercel.app/api/v1/jobs/<job_id>")"
+     echo "$JOB_RESPONSE" | jq .
+     STATUS="$(echo "$JOB_RESPONSE" | jq -r '.status')"
+     if [ "$STATUS" = "done" ] || [ "$STATUS" = "failed" ]; then
+       break
+     fi
+     sleep 5
+   done
    ```
+   If the job is still `paid` or `running` after 2 minutes, set a background cron or scheduled check every minute for up to 10 minutes. If it still has not changed after 10 minutes, report that the seller is unresponsive and give the operator the job URL: `https://quota-dex.vercel.app/api/v1/jobs/<job_id>`.
 
 ## Safety rules
 
@@ -146,5 +168,26 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
 - Never use mock `tx_hash` for a production purchase.
 - Never use the direct escrow fallback unless the operator explicitly allows it for the current purchase.
 - Never override the quote price during direct escrow fallback.
+- Quote fingerprint is deterministic for the same `buyer_id`, `capability`, `prompt`, and `network_profile`. If re-quoting returns the same fingerprint, the quote already exists; do not pay again unless the previous payment is confirmed failed.
+- Before direct escrow payment, run `kpass activity --output json` and check for an existing same-amount transfer to the same escrow address.
 - Keep the original quote body unchanged when calling `/api/v1/jobs/verify`.
+- If x402 fails with `payment_target_forbidden`, `X_PAYMENT_REQUIRED`, or `GATEWAY_CONFIG_MISSING`, use the direct escrow fallback after one operator confirmation. Do not extract JWTs, call Passport backend APIs manually, or hand-build `X-PAYMENT`.
 - Do not use website pages, market-monitoring APIs, or the one-click Demo route for real Buyer Agent operation.
+
+## Installing this skill locally
+
+For Codex-style local skills, install the live copy served by QuotaDEX:
+
+```bash
+mkdir -p ~/.codex/skills/quotadex-buyer
+curl -fsSL https://quota-dex.vercel.app/skills/quotadex-buyer/SKILL.md \
+  -o ~/.codex/skills/quotadex-buyer/SKILL.md
+```
+
+For agents that use `~/.agents/skills`, use the same file under that directory:
+
+```bash
+mkdir -p ~/.agents/skills/quotadex-buyer
+curl -fsSL https://quota-dex.vercel.app/skills/quotadex-buyer/SKILL.md \
+  -o ~/.agents/skills/quotadex-buyer/SKILL.md
+```
