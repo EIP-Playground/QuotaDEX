@@ -17,6 +17,13 @@ import {
 import { DotCanvas } from "@/components/landing/dot-canvas";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import {
+  type DashboardMode,
+  type LiveNetwork,
+  writeDashboardPreferenceCookie,
+  DASHBOARD_LIVE_NETWORK_COOKIE_NAME,
+  DASHBOARD_MODE_COOKIE_NAME
+} from "@/lib/dashboard-preferences";
 
 type Seller = {
   id: string;
@@ -68,7 +75,6 @@ type ActivityBucket = {
   settledJobs: number;
 };
 type EventItem = { id: string; type: string; title: string; message: string; timestamp: string; jobId: string | null; tone: string };
-type LiveNetwork = "testnet" | "mainnet";
 
 const CAPS = ["GPT-4-Turbo", "Llama-3 8B", "Mixtral 8x7B", "Claude Haiku", "Gemini Pro", "Llama-3 70B"];
 const AGENTS = ["Agent_X", "Agent_Y", "Agent_Z", "Agent_A7", "Agent_K2", "Agent_M9"];
@@ -112,7 +118,7 @@ function shortHash(value: string) {
   return `${value.slice(0, 8)}…${value.slice(-4)}`;
 }
 
-function formatVolume(value: number, mode: "demo" | "live") {
+function formatVolume(value: number, mode: DashboardMode) {
   if (mode === "demo" || value >= 1000) {
     return `${(value / 1000).toFixed(1)}k`;
   }
@@ -149,7 +155,7 @@ function Sparkline({ data, color = "#c8a435" }: { data: number[]; color?: string
   );
 }
 
-function DemandChart({ activity, mode }: { activity: ActivityBucket[]; mode: "demo" | "live" }) {
+function DemandChart({ activity, mode }: { activity: ActivityBucket[]; mode: DashboardMode }) {
   const { demand, supply, max } = useMemo(() => {
     if (mode === "live" && activity.length > 0) {
       const created = activity.map((bucket) => bucket.createdJobs);
@@ -219,7 +225,7 @@ function DemandChart({ activity, mode }: { activity: ActivityBucket[]; mode: "de
   );
 }
 
-function ModeSwitch({ mode, onChange }: { mode: "demo" | "live"; onChange: (m: "demo" | "live") => void }) {
+function ModeSwitch({ mode, onChange }: { mode: DashboardMode; onChange: (m: DashboardMode) => void }) {
   return (
     <div className="modeSwitch">
       {(["demo", "live"] as const).map((m) => (
@@ -257,9 +263,17 @@ function LiveNetworkSwitch({
   );
 }
 
-export function MarketplaceClient() {
-  const [mode, setMode] = useState<"demo" | "live">("demo");
-  const [liveNetwork, setLiveNetwork] = useState<LiveNetwork>("testnet");
+type MarketplaceClientProps = {
+  initialLiveNetwork?: LiveNetwork;
+  initialMode?: DashboardMode;
+};
+
+export function MarketplaceClient({
+  initialLiveNetwork = "testnet",
+  initialMode = "demo"
+}: MarketplaceClientProps) {
+  const [mode, setModeState] = useState<DashboardMode>(initialMode);
+  const [liveNetwork, setLiveNetworkState] = useState<LiveNetwork>(initialLiveNetwork);
 
   const [orderBook, setOrderBook] = useState<Seller[]>(() =>
     Array.from({ length: 9 }, (_, i) => makeSeller(i))
@@ -306,6 +320,16 @@ export function MarketplaceClient() {
     const indexes = [0, 4, 8, 12, 16, 20, activity24h.length - 1];
     return indexes.map((index) => formatHourLabel(activity24h[Math.min(index, activity24h.length - 1)].hour));
   }, [activity24h, mode]);
+
+  const setDashboardMode = (nextMode: DashboardMode) => {
+    setModeState(nextMode);
+    writeDashboardPreferenceCookie(DASHBOARD_MODE_COOKIE_NAME, nextMode);
+  };
+
+  const setDashboardLiveNetwork = (nextNetwork: LiveNetwork) => {
+    setLiveNetworkState(nextNetwork);
+    writeDashboardPreferenceCookie(DASHBOARD_LIVE_NETWORK_COOKIE_NAME, nextNetwork);
+  };
 
   // Demo mode: animated mock data
   useEffect(() => {
@@ -428,9 +452,9 @@ export function MarketplaceClient() {
               <p>{dashboardCopy}</p>
             </div>
             <div className="dashControls">
-              <ModeSwitch mode={mode} onChange={setMode} />
+              <ModeSwitch mode={mode} onChange={setDashboardMode} />
               {mode === "live" ? (
-                <LiveNetworkSwitch network={liveNetwork} onChange={setLiveNetwork} />
+                <LiveNetworkSwitch network={liveNetwork} onChange={setDashboardLiveNetwork} />
               ) : null}
               <div className="dashLive">
                 {dashboardBadge}

@@ -2,6 +2,25 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => ({
+    get(name: string) {
+      const cookie = document.cookie
+        .split("; ")
+        .find((entry) => entry.startsWith(`${name}=`));
+
+      if (!cookie) {
+        return undefined;
+      }
+
+      return {
+        name,
+        value: decodeURIComponent(cookie.slice(name.length + 1))
+      };
+    }
+  }))
+}));
+
 const makeCtxStub = () =>
   ({
     clearRect: vi.fn(),
@@ -27,11 +46,27 @@ const makeCtxStub = () =>
     textBaseline: ""
   }) as unknown as CanvasRenderingContext2D;
 
+function clearDocumentCookies() {
+  document.cookie.split(";").forEach((cookie) => {
+    const name = cookie.split("=")[0]?.trim();
+    if (name) {
+      document.cookie = `${name}=; Path=/; Max-Age=0`;
+    }
+  });
+}
+
+async function renderMarketplacePage() {
+  const { default: MarketplacePage } = await import("@/app/marketplace/page");
+
+  return render(await MarketplacePage());
+}
+
 describe("MarketplacePage", () => {
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
+    clearDocumentCookies();
     HTMLCanvasElement.prototype.getContext = vi.fn(
       () => makeCtxStub()
     ) as unknown as HTMLCanvasElement["getContext"];
@@ -44,8 +79,7 @@ describe("MarketplacePage", () => {
   });
 
   it("renders the global compute monitor shell with live panels", async () => {
-    const { default: MarketplacePage } = await import("@/app/marketplace/page");
-    render(<MarketplacePage />);
+    await renderMarketplacePage();
 
     expect(
       screen.getByRole("heading", { name: /global compute monitor/i })
@@ -141,8 +175,7 @@ describe("MarketplacePage", () => {
       return Response.json({});
     }) as typeof fetch;
 
-    const { default: MarketplacePage } = await import("@/app/marketplace/page");
-    render(<MarketplacePage />);
+    await renderMarketplacePage();
 
     fireEvent.click(screen.getByRole("button", { name: /live/i }));
 
@@ -187,8 +220,7 @@ describe("MarketplacePage", () => {
       return Response.json({});
     }) as typeof fetch;
 
-    const { default: MarketplacePage } = await import("@/app/marketplace/page");
-    render(<MarketplacePage />);
+    await renderMarketplacePage();
 
     fireEvent.click(screen.getByRole("button", { name: /live/i }));
 
@@ -240,8 +272,7 @@ describe("MarketplacePage", () => {
       return Response.json({});
     }) as typeof fetch;
 
-    const { default: MarketplacePage } = await import("@/app/marketplace/page");
-    render(<MarketplacePage />);
+    await renderMarketplacePage();
 
     expect(screen.queryByRole("link", { name: /try it/i })).not.toBeInTheDocument();
 
@@ -260,5 +291,60 @@ describe("MarketplacePage", () => {
     });
 
     expect(screen.queryByRole("link", { name: /try it/i })).not.toBeInTheDocument();
+  });
+
+  it("persists the selected Dashboard mode and live network across reloads", async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes("/api/v1/dashboard/summary")) {
+        return Response.json({
+          metrics: {
+            activeSellers: 0,
+            openJobs: 0,
+            completedJobs: 0,
+            failedJobs: 0,
+            volume24h: 0
+          },
+          activity24h: []
+        });
+      }
+
+      if (url.includes("/api/v1/dashboard/market")) {
+        return Response.json({
+          rows: [],
+          topSellers: [],
+          recentSettlements: []
+        });
+      }
+
+      if (url.includes("/api/v1/dashboard/events")) {
+        return Response.json({ items: [] });
+      }
+
+      return Response.json({});
+    }) as typeof fetch;
+
+    const { unmount } = await renderMarketplacePage();
+
+    fireEvent.click(screen.getByRole("button", { name: /live/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mainnet/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/live · live mainnet/i)).toBeInTheDocument();
+    });
+
+    expect(document.cookie).toContain("quotadex_dashboard_mode=live");
+    expect(document.cookie).toContain("quotadex_dashboard_live_network=mainnet");
+
+    unmount();
+    await renderMarketplacePage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/live · live mainnet/i)).toBeInTheDocument();
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("mode=live&network=mainnet")
+      );
+    });
   });
 });
