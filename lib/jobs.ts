@@ -94,7 +94,7 @@ export type CreatedSettlingJob = {
   status: "settling";
 };
 
-export type PaymentMode = "mock" | "x402-escrow";
+export type PaymentMode = "mock" | "x402-escrow" | "direct-escrow";
 export type PaymentStatus =
   | "created"
   | "settling"
@@ -182,11 +182,21 @@ function readOptionalString(
 }
 
 function parsePaymentMode(value: string): PaymentMode {
-  if (value === "mock" || value === "x402-escrow") {
+  if (
+    value === "mock" ||
+    value === "x402-escrow" ||
+    value === "direct-escrow"
+  ) {
     return value;
   }
 
   throw new Error(`Unsupported payment_mode: ${value}.`);
+}
+
+export function isEscrowPaymentMode(
+  paymentMode: PaymentMode | string | null | undefined
+): boolean {
+  return paymentMode === "x402-escrow" || paymentMode === "direct-escrow";
 }
 
 function normalizePrice(value: string | number): string {
@@ -587,7 +597,7 @@ export function verifyMockTxHash(txHash: string): void {
 }
 
 function paymentStatusForVerifiedPayment(payment: VerifiedPaymentMetadata): PaymentStatus {
-  if (payment.mode === "x402-escrow") {
+  if (isEscrowPaymentMode(payment.mode)) {
     return "escrow_registered";
   }
 

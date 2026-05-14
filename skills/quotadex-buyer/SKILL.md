@@ -107,7 +107,33 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      --output json
    ```
    Expect `job_id`, `payment_mode: "x402-escrow"`, `settlement_tx_hash`, and `escrow_registration_tx_hash`.
-6. Poll the job until it reaches `done` or `failed`:
+6. Temporary direct escrow transfer fallback. Prefer the x402 `X-PAYMENT` flow above. Use this fallback only if x402 cannot be used, the Gateway returns `X_PAYMENT_REQUIRED`, and the operator explicitly confirms direct escrow transfer fallback is allowed for this purchase. Do not use it automatically.
+   ```bash
+   QUOTE_RESPONSE='<paste_the_exact_quote_response_json_from_step_3>'
+   DIRECT_PAYMENT_TX="$(kpass wallet send \
+     --to "$(echo "$QUOTE_RESPONSE" | jq -r '.pay_to')" \
+     --amount "$(echo "$QUOTE_RESPONSE" | jq -r '.amount')" \
+     --asset "$(echo "$QUOTE_RESPONSE" | jq -r '.currency')" \
+     --output json)"
+   echo "$DIRECT_PAYMENT_TX" | jq .
+   DIRECT_PAYMENT_TX_HASH="$(echo "$DIRECT_PAYMENT_TX" | jq -r '.tx_hash // .transaction_hash // .hash')"
+   test -n "$DIRECT_PAYMENT_TX_HASH"
+
+   curl -sS -X POST "https://quota-dex.vercel.app/api/v1/jobs/verify" \
+     -H "content-type: application/json" \
+     -d '{
+       "fingerprint":"<fingerprint>",
+       "tx_hash":"'"$DIRECT_PAYMENT_TX_HASH"'",
+       "payload":{
+         "buyer_id":"<buyer_payer_address>",
+         "capability":"<capability>",
+         "prompt":"<prompt>",
+         "network_profile":"live-mainnet"
+       }
+     }'
+   ```
+   Expect `job_id`, `payment_mode: "direct-escrow"`, `settlement_tx_hash`, and `escrow_registration_tx_hash`. The sent token, receiver, and amount must come from the quote. Use the exact quote amount; do not guess an amount. Do not use `0.01 USDC` for buyer payment unless the quote amount is exactly `0.01`.
+7. Poll the job until it reaches `done` or `failed`:
    ```bash
    curl -sS "https://quota-dex.vercel.app/api/v1/jobs/<job_id>"
    ```
@@ -118,5 +144,7 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
 - Use only `https://quota-dex.vercel.app` for QuotaDEX Gateway calls.
 - Never pay if quote validation fails.
 - Never use mock `tx_hash` for a production purchase.
+- Never use the direct escrow fallback unless the operator explicitly allows it for the current purchase.
+- Never override the quote price during direct escrow fallback.
 - Keep the original quote body unchanged when calling `/api/v1/jobs/verify`.
 - Do not use website pages, market-monitoring APIs, or the one-click Demo route for real Buyer Agent operation.

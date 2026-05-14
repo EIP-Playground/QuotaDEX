@@ -1,6 +1,8 @@
 import { buildFingerprint } from "@/lib/fingerprint";
 import {
+  EscrowGatewayActionError,
   executeEscrowGatewayAction,
+  InvalidEscrowReceiptError,
   recoverExcessEscrowPaymentToken,
   registerFacilitatorEscrowPayment,
   verifyFacilitatorSettlementReceipt
@@ -128,6 +130,9 @@ describe("POST /api/v1/jobs/verify", () => {
     process.env.GATEWAY_PRIVATE_KEY =
       "0x1111111111111111111111111111111111111111111111111111111111111111";
     process.env.ALLOW_MOCK_PAYMENTS = "false";
+    process.env.ALLOW_DIRECT_ESCROW_PAYMENTS = "false";
+    process.env.LIVE_TESTNET_ALLOW_DIRECT_ESCROW_PAYMENTS = "false";
+    process.env.LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS = "false";
 
     eventInsert.mockResolvedValue({ error: null });
     vi.mocked(createServerSupabaseClient).mockReturnValue({
@@ -209,6 +214,195 @@ describe("POST /api/v1/jobs/verify", () => {
     );
     expect(verifyFacilitatorPayment).not.toHaveBeenCalled();
     expect(registerFacilitatorEscrowPayment).not.toHaveBeenCalled();
+  });
+
+  it("verifies and registers a direct escrow transfer when the fallback is enabled", async () => {
+    process.env.ALLOW_DIRECT_ESCROW_PAYMENTS = "true";
+    const directTxHash =
+      "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    const escrowRegistrationTxHash =
+      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const verifyRequest = {
+      fingerprint,
+      tx_hash: directTxHash,
+      payload
+    };
+
+    vi.mocked(verifyFacilitatorSettlementReceipt).mockResolvedValue(undefined);
+    vi.mocked(registerFacilitatorEscrowPayment).mockResolvedValue({
+      txHash: escrowRegistrationTxHash
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        body: JSON.stringify(verifyRequest)
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      job_id: "job-1",
+      status: "paid",
+      payment_mode: "direct-escrow",
+      settlement_tx_hash: directTxHash,
+      escrow_registration_tx_hash: escrowRegistrationTxHash
+    });
+    expect(verifyFacilitatorPayment).not.toHaveBeenCalled();
+    expect(settleFacilitatorPayment).not.toHaveBeenCalled();
+    expect(verifyFacilitatorSettlementReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txHash: directTxHash,
+        paymentId: fingerprint,
+        buyerId,
+        amountAtomic: quoteContext.amount_atomic,
+        tokenAddress: quoteContext.payment_asset,
+        escrowAddress: quoteContext.pay_to,
+        rpcUrl: "https://rpc-testnet.gokite.ai"
+      })
+    );
+    expect(registerFacilitatorEscrowPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: fingerprint,
+        buyerId,
+        sellerId,
+        amountAtomic: quoteContext.amount_atomic,
+        settlementTxHash: directTxHash,
+        rpcUrl: "https://rpc-testnet.gokite.ai",
+        escrowAddress: quoteContext.pay_to
+      })
+    );
+    expect(finalizeSettlingJobPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: "job-1",
+        txHash: directTxHash,
+        payment: expect.objectContaining({
+          mode: "direct-escrow",
+          settlementTxHash: directTxHash,
+          escrowRegistrationTxHash,
+          buyerWalletAddress: buyerId,
+          sellerWalletAddress: sellerId
+        })
+      })
+    );
+  });
+
+  it("requires tx_hash when direct escrow fallback is enabled", async () => {
+    process.env.ALLOW_DIRECT_ESCROW_PAYMENTS = "true";
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash: null,
+          payload
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("INVALID_TX_HASH");
+    expect(verifyFacilitatorSettlementReceipt).not.toHaveBeenCalled();
+    expect(registerFacilitatorEscrowPayment).not.toHaveBeenCalled();
+    expect(markSellerBusyForPayment).not.toHaveBeenCalled();
+    expect(createSettlingJob).not.toHaveBeenCalled();
+    expect(deleteJob).not.toHaveBeenCalled();
+    expect(deleteQuoteContext).not.toHaveBeenCalled();
+    expect(setSellerIdleAfterExecution).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed direct escrow tx_hash before seller side effects", async () => {
+    process.env.ALLOW_DIRECT_ESCROW_PAYMENTS = "true";
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash: "0xabc123",
+          payload
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("INVALID_TX_HASH");
+    expect(markSellerBusyForPayment).not.toHaveBeenCalled();
+    expect(createSettlingJob).not.toHaveBeenCalled();
+    expect(deleteJob).not.toHaveBeenCalled();
+    expect(deleteQuoteContext).not.toHaveBeenCalled();
+    expect(verifyFacilitatorSettlementReceipt).not.toHaveBeenCalled();
+    expect(registerFacilitatorEscrowPayment).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["TX_TOKEN_TRANSFER_MISMATCH", "amount, buyer, or escrow mismatch"],
+    ["TX_TOKEN_MISMATCH", "token mismatch"],
+    ["INVALID_BUYER_ADDRESS", "buyer mismatch"]
+  ] as const)("rejects direct escrow transfers with %s", async (code, reason) => {
+    process.env.ALLOW_DIRECT_ESCROW_PAYMENTS = "true";
+    const directTxHash =
+      "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+    vi.mocked(verifyFacilitatorSettlementReceipt).mockRejectedValue(
+      new InvalidEscrowReceiptError(`Direct transfer ${reason}.`, code)
+    );
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash: directTxHash,
+          payload
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe(code);
+    expect(registerFacilitatorEscrowPayment).not.toHaveBeenCalled();
+    expect(deleteJob).toHaveBeenCalledWith("job-1");
+    expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(
+      sellerId,
+      "demo-testnet"
+    );
+  });
+
+  it("returns a conflict when a direct escrow tx_hash was already registered on-chain", async () => {
+    process.env.ALLOW_DIRECT_ESCROW_PAYMENTS = "true";
+    const directTxHash =
+      "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+    vi.mocked(verifyFacilitatorSettlementReceipt).mockResolvedValue(undefined);
+    vi.mocked(registerFacilitatorEscrowPayment).mockRejectedValue(
+      new EscrowGatewayActionError(
+        "Settlement transaction hash has already been registered.",
+        "SETTLEMENT_ALREADY_REGISTERED"
+      )
+    );
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash: directTxHash,
+          payload
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("TX_ALREADY_USED");
+    expect(recoverExcessEscrowPaymentToken).not.toHaveBeenCalled();
+    expect(deleteJob).toHaveBeenCalledWith("job-1");
   });
 
   it("claims the seller and records a settling intent before facilitator settlement", async () => {
@@ -312,8 +506,23 @@ describe("POST /api/v1/jobs/verify", () => {
   });
 
   it("uses the quote network profile for Live Mainnet settlement and escrow registration", async () => {
+    const mainnetPayload = {
+      ...payload,
+      network_profile: "live-mainnet" as const
+    };
+    const mainnetFingerprint = buildFingerprint(
+      {
+        buyerId: mainnetPayload.buyer_id,
+        capability: mainnetPayload.capability,
+        prompt: mainnetPayload.prompt,
+        networkProfile: mainnetPayload.network_profile
+      },
+      "salt"
+    );
     const mainnetQuoteContext = {
       ...quoteContext,
+      payment_id: mainnetFingerprint,
+      fingerprint: mainnetFingerprint,
       amount_atomic: "5000",
       currency: "USDC",
       payment_asset: "0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e",
@@ -354,9 +563,9 @@ describe("POST /api/v1/jobs/verify", () => {
           "x-payment": xPayment
         },
         body: JSON.stringify({
-          fingerprint,
+          fingerprint: mainnetFingerprint,
           tx_hash: null,
-          payload
+          payload: mainnetPayload
         })
       })
     );
@@ -377,6 +586,59 @@ describe("POST /api/v1/jobs/verify", () => {
         escrowAddress: mainnetQuoteContext.pay_to
       })
     );
+  });
+
+  it.each([
+    [
+      "payment asset",
+      {
+        payment_asset: "0x8888888888888888888888888888888888888888"
+      }
+    ],
+    [
+      "escrow address",
+      {
+        pay_to: "0x8888888888888888888888888888888888888888"
+      }
+    ],
+    [
+      "network",
+      {
+        network: "kite-mainnet"
+      }
+    ],
+    [
+      "chain id",
+      {
+        chain_id: "2366"
+      }
+    ]
+  ])("rejects stale quote contexts with mismatched %s", async (_label, override) => {
+    process.env.ALLOW_DIRECT_ESCROW_PAYMENTS = "true";
+    vi.mocked(loadQuoteContext).mockResolvedValue({
+      ...quoteContext,
+      ...override
+    } as never);
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash:
+            "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          payload
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("QUOTE_PAYMENT_PROFILE_MISMATCH");
+    expect(markSellerBusyForPayment).not.toHaveBeenCalled();
+    expect(createSettlingJob).not.toHaveBeenCalled();
+    expect(verifyFacilitatorSettlementReceipt).not.toHaveBeenCalled();
+    expect(registerFacilitatorEscrowPayment).not.toHaveBeenCalled();
   });
 
   it("does not call the facilitator when the seller reservation is stale", async () => {
@@ -462,7 +724,7 @@ describe("POST /api/v1/jobs/verify", () => {
     expect(recoverExcessEscrowPaymentToken).not.toHaveBeenCalled();
   });
 
-  it("recovers settled but unregistered escrow funds when registration fails", async () => {
+  it("does not recover settled but unregistered escrow funds when registration fails", async () => {
     const xPayment = Buffer.from(
       JSON.stringify({
         authorization: {
@@ -504,13 +766,7 @@ describe("POST /api/v1/jobs/verify", () => {
 
     expect(response.status).toBe(500);
     expect(body.code).toBe("PAYMENT_VERIFY_FAILED");
-    expect(recoverExcessEscrowPaymentToken).toHaveBeenCalledWith(
-      expect.objectContaining({
-        recipientAddress: buyerId,
-        amountAtomic: quoteContext.amount_atomic,
-        escrowAddress: quoteContext.pay_to
-      })
-    );
+    expect(recoverExcessEscrowPaymentToken).not.toHaveBeenCalled();
     expect(deleteJob).toHaveBeenCalledWith("job-1");
     expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(
       sellerId,

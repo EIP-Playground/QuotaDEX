@@ -9,6 +9,9 @@ describe("network profiles", () => {
   beforeEach(() => {
     process.env.LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS =
       "0x9999999999999999999999999999999999999999";
+    process.env.ALLOW_DIRECT_ESCROW_PAYMENTS = "false";
+    process.env.LIVE_TESTNET_ALLOW_DIRECT_ESCROW_PAYMENTS = "false";
+    process.env.LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS = "false";
   });
 
   it("keeps the one-click demo pinned to the existing Kite Testnet USDT escrow", () => {
@@ -22,7 +25,8 @@ describe("network profiles", () => {
       paymentCurrency: "USDT",
       paymentTokenDecimals: "18",
       paymentAssetAddress: "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63",
-      escrowContractAddress: "0x4444444444444444444444444444444444444444"
+      escrowContractAddress: "0x4444444444444444444444444444444444444444",
+      allowDirectEscrowPayments: "false"
     });
   });
 
@@ -39,7 +43,24 @@ describe("network profiles", () => {
       paymentCurrency: "USDC",
       paymentTokenDecimals: "6",
       paymentAssetAddress: KITE_MAINNET_USDC_ADDRESS,
-      escrowContractAddress: "0x9999999999999999999999999999999999999999"
+      escrowContractAddress: "0x9999999999999999999999999999999999999999",
+      allowDirectEscrowPayments: "false"
+    });
+  });
+
+  it("can enable direct escrow transfer verification per Live profile", () => {
+    process.env.LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS = "true";
+    process.env.LIVE_TESTNET_ALLOW_DIRECT_ESCROW_PAYMENTS = "false";
+    process.env.LIVE_TESTNET_PAYMENT_ASSET_ADDRESS =
+      "0x7777777777777777777777777777777777777777";
+    process.env.LIVE_TESTNET_ESCROW_CONTRACT_ADDRESS =
+      "0x8888888888888888888888888888888888888888";
+
+    expect(getNetworkProfile(getServerEnv(), "live-mainnet")).toMatchObject({
+      allowDirectEscrowPayments: "true"
+    });
+    expect(getNetworkProfile(getServerEnv(), "live-testnet")).toMatchObject({
+      allowDirectEscrowPayments: "false"
     });
   });
 

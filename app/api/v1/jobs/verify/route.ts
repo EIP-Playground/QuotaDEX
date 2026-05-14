@@ -15,7 +15,7 @@ import {
   EscrowGatewayActionError,
   executeEscrowGatewayAction,
   InvalidEscrowReceiptError,
-  recoverExcessEscrowPaymentToken,
+  looksLikeOnChainTxHash,
   registerFacilitatorEscrowPayment,
   verifyFacilitatorSettlementReceipt
 } from "@/lib/chain/escrow";
@@ -55,6 +55,20 @@ type PaymentVerificationProgress = {
   escrowRegistered: boolean;
 };
 
+function quoteMatchesActiveNetworkProfile(
+  quoteContext: NonNullable<Awaited<ReturnType<typeof loadQuoteContext>>>,
+  networkProfile: PaymentNetworkProfile
+): boolean {
+  return (
+    quoteContext.pay_to.toLowerCase() ===
+      networkProfile.escrowContractAddress.toLowerCase() &&
+    quoteContext.payment_asset.toLowerCase() ===
+      networkProfile.paymentAssetAddress.toLowerCase() &&
+    quoteContext.network === networkProfile.network &&
+    quoteContext.chain_id === networkProfile.chainId
+  );
+}
+
 function summarizeFacilitatorPayload(xPaymentHeader: string) {
   try {
     const payload = decodeXPaymentHeader(xPaymentHeader);
@@ -85,7 +99,7 @@ async function verifyPaymentForRequest(params: {
   networkProfile: PaymentNetworkProfile;
   progress?: PaymentVerificationProgress;
 }): Promise<{
-  mode: "mock" | "x402-escrow";
+  mode: "mock" | "x402-escrow" | "direct-escrow";
   resolvedTxHash: string | null;
   settlementTxHash?: string | null;
   escrowRegistrationTxHash?: string | null;
@@ -159,19 +173,19 @@ async function verifyPaymentForRequest(params: {
         settleResponse
       );
     }
-    if (params.progress) {
-      params.progress.settlementTxHash = settlementTxHash;
-    }
-
     await verifyFacilitatorSettlementReceipt({
       txHash: settlementTxHash,
       paymentId: params.quoteContext.payment_id,
       buyerId: params.verifyRequest.payload.buyer_id,
       amountAtomic: params.quoteContext.amount_atomic,
       rpcUrl: params.networkProfile.rpcUrl,
-      tokenAddress: params.quoteContext.payment_asset,
-      escrowAddress: params.quoteContext.pay_to
+      tokenAddress: params.networkProfile.paymentAssetAddress,
+      escrowAddress: params.networkProfile.escrowContractAddress
     });
+
+    if (params.progress) {
+      params.progress.settlementTxHash = settlementTxHash;
+    }
 
     const escrowRegistration = await registerFacilitatorEscrowPayment({
       paymentId: params.quoteContext.payment_id,
@@ -180,7 +194,7 @@ async function verifyPaymentForRequest(params: {
       amountAtomic: params.quoteContext.amount_atomic,
       settlementTxHash,
       rpcUrl: params.networkProfile.rpcUrl,
-      escrowAddress: params.quoteContext.pay_to,
+      escrowAddress: params.networkProfile.escrowContractAddress,
       gatewayPrivateKey: params.networkProfile.gatewayPrivateKey
     });
     if (params.progress) {
@@ -197,34 +211,89 @@ async function verifyPaymentForRequest(params: {
     };
   }
 
-  if (params.networkProfile.allowMockPayments !== "true") {
-    throw new PaymentVerificationInputError(
-      "X-PAYMENT header is required for production payment verification.",
-      "X_PAYMENT_REQUIRED"
-    );
+  if (params.networkProfile.allowMockPayments === "true") {
+    if (!params.txHash) {
+      throw new PaymentVerificationInputError(
+        "tx_hash is required when X-PAYMENT is not provided.",
+        "INVALID_TX_HASH"
+      );
+    }
+
+    console.info("Verify payment route selected", {
+      mode: "mock",
+      paymentId: params.quoteContext.payment_id,
+      sellerId: params.quoteContext.seller_id,
+      buyerId: params.verifyRequest.payload.buyer_id,
+      txHash: params.txHash
+    });
+
+    verifyMockTxHash(params.txHash);
+
+    return {
+      mode: "mock",
+      resolvedTxHash: params.txHash
+    };
   }
 
-  if (!params.txHash) {
-    throw new PaymentVerificationInputError(
-      "tx_hash is required when X-PAYMENT is not provided.",
-      "INVALID_TX_HASH"
-    );
+  if (params.networkProfile.allowDirectEscrowPayments === "true") {
+    if (!params.txHash) {
+      throw new PaymentVerificationInputError(
+        "tx_hash is required for direct escrow payment verification.",
+        "INVALID_TX_HASH"
+      );
+    }
+
+    console.info("Verify payment route selected", {
+      mode: "direct-escrow",
+      paymentId: params.quoteContext.payment_id,
+      sellerId: params.quoteContext.seller_id,
+      buyerId: params.verifyRequest.payload.buyer_id,
+      txHash: params.txHash
+    });
+
+    await verifyFacilitatorSettlementReceipt({
+      txHash: params.txHash,
+      paymentId: params.quoteContext.payment_id,
+      buyerId: params.verifyRequest.payload.buyer_id,
+      amountAtomic: params.quoteContext.amount_atomic,
+      rpcUrl: params.networkProfile.rpcUrl,
+      tokenAddress: params.networkProfile.paymentAssetAddress,
+      escrowAddress: params.networkProfile.escrowContractAddress
+    });
+
+    if (params.progress) {
+      params.progress.settlementTxHash = params.txHash;
+    }
+
+    const escrowRegistration = await registerFacilitatorEscrowPayment({
+      paymentId: params.quoteContext.payment_id,
+      buyerId: params.verifyRequest.payload.buyer_id,
+      sellerId: params.quoteContext.seller_id,
+      amountAtomic: params.quoteContext.amount_atomic,
+      settlementTxHash: params.txHash,
+      rpcUrl: params.networkProfile.rpcUrl,
+      escrowAddress: params.networkProfile.escrowContractAddress,
+      gatewayPrivateKey: params.networkProfile.gatewayPrivateKey
+    });
+
+    if (params.progress) {
+      params.progress.escrowRegistered = true;
+    }
+
+    return {
+      mode: "direct-escrow",
+      resolvedTxHash: params.txHash,
+      settlementTxHash: params.txHash,
+      escrowRegistrationTxHash: escrowRegistration.txHash,
+      buyerWalletAddress: params.verifyRequest.payload.buyer_id,
+      sellerWalletAddress: params.quoteContext.seller_id
+    };
   }
 
-  console.info("Verify payment route selected", {
-    mode: "mock",
-    paymentId: params.quoteContext.payment_id,
-    sellerId: params.quoteContext.seller_id,
-    buyerId: params.verifyRequest.payload.buyer_id,
-    txHash: params.txHash
-  });
-
-  verifyMockTxHash(params.txHash);
-
-  return {
-    mode: "mock",
-    resolvedTxHash: params.txHash
-  };
+  throw new PaymentVerificationInputError(
+    "X-PAYMENT header is required for production payment verification.",
+    "X_PAYMENT_REQUIRED"
+  );
 }
 
 export async function POST(request: Request) {
@@ -301,7 +370,8 @@ export async function POST(request: Request) {
   if (
     quoteContext.fingerprint !== verifyRequest.fingerprint ||
     quoteContext.buyer_id !== verifyRequest.payload.buyer_id ||
-    quoteContext.capability !== verifyRequest.payload.capability
+    quoteContext.capability !== verifyRequest.payload.capability ||
+    quoteContext.network_profile !== requestedNetworkProfile
   ) {
     return forbiddenResponse(
       "Quote context does not match the verification payload.",
@@ -324,20 +394,33 @@ export async function POST(request: Request) {
     );
   }
 
-  if (
-    quoteContext.pay_to.toLowerCase() !==
-    networkProfile.escrowContractAddress.toLowerCase()
-  ) {
+  if (!quoteMatchesActiveNetworkProfile(quoteContext, networkProfile)) {
     return conflictResponse(
-      "Quote escrow contract is no longer active. Request a fresh quote.",
-      "QUOTE_ESCROW_MISMATCH"
+      "Quote payment network profile is no longer active. Request a fresh quote.",
+      "QUOTE_PAYMENT_PROFILE_MISMATCH"
     );
   }
 
-  if (!xPaymentHeader && networkProfile.allowMockPayments !== "true") {
+  if (
+    !xPaymentHeader &&
+    networkProfile.allowMockPayments !== "true" &&
+    networkProfile.allowDirectEscrowPayments !== "true"
+  ) {
     return badRequestResponse(
       "X-PAYMENT header is required for production payment verification.",
       "X_PAYMENT_REQUIRED"
+    );
+  }
+
+  if (
+    !xPaymentHeader &&
+    networkProfile.allowMockPayments !== "true" &&
+    networkProfile.allowDirectEscrowPayments === "true" &&
+    (!verifyRequest.tx_hash || !looksLikeOnChainTxHash(verifyRequest.tx_hash))
+  ) {
+    return badRequestResponse(
+      "tx_hash must be a 32-byte transaction hash for direct escrow payment verification.",
+      "INVALID_TX_HASH"
     );
   }
 
@@ -416,34 +499,12 @@ export async function POST(request: Request) {
 
   async function cleanupFailedPaymentVerification(reason: string) {
     if (verificationProgress.settlementTxHash && !verificationProgress.escrowRegistered) {
-      try {
-        const recovery = await recoverExcessEscrowPaymentToken({
-          recipientAddress: activeQuoteContext.buyer_id,
-          amountAtomic: activeQuoteContext.amount_atomic,
-          rpcUrl: networkProfile.rpcUrl,
-          escrowAddress: activeQuoteContext.pay_to,
-          gatewayPrivateKey: networkProfile.gatewayPrivateKey
-        });
-
-        console.error("Recovered unregistered escrow payment after verify failure", {
-          paymentId: activeQuoteContext.payment_id,
-          jobId: settlingJob.id,
-          settlementTxHash: verificationProgress.settlementTxHash,
-          recoveryTxHash: recovery.txHash,
-          reason
-        });
-      } catch (recoveryError) {
-        console.error("Failed to recover unregistered escrow payment after verify failure", {
-          paymentId: activeQuoteContext.payment_id,
-          jobId: settlingJob.id,
-          settlementTxHash: verificationProgress.settlementTxHash,
-          reason,
-          recoveryReason:
-            recoveryError instanceof Error
-              ? recoveryError.message
-              : "Unknown escrow recovery error."
-        });
-      }
+      console.error("Escrow transfer verified but payment was not registered", {
+        paymentId: activeQuoteContext.payment_id,
+        jobId: settlingJob.id,
+        settlementTxHash: verificationProgress.settlementTxHash,
+        reason
+      });
     }
 
     try {
@@ -527,6 +588,28 @@ export async function POST(request: Request) {
     }
 
     if (error instanceof EscrowGatewayActionError) {
+      if (error.code === "SETTLEMENT_ALREADY_REGISTERED") {
+        return conflictResponse(
+          "This tx_hash has already been used.",
+          "TX_ALREADY_USED"
+        );
+      }
+
+      if (error.code === "PAYMENT_ALREADY_REGISTERED") {
+        return conflictResponse(
+          "This payment has already been verified.",
+          "PAYMENT_ALREADY_VERIFIED"
+        );
+      }
+
+      if (error.code === "ESCROW_REGISTRATION_FAILED") {
+        return internalServerErrorResponse(
+          "Failed to register escrow payment.",
+          "ESCROW_REGISTRATION_FAILED",
+          { reason: error.message }
+        );
+      }
+
       return badRequestResponse(error.message, error.code);
     }
 

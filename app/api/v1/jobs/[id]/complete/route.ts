@@ -20,6 +20,7 @@ import {
   SellerCallbackSignatureError
 } from "@/lib/seller-callback-auth";
 import {
+  isEscrowPaymentMode,
   loadJobSnapshot,
   logJobEvent,
   parseCompleteJobBody,
@@ -138,7 +139,7 @@ export async function POST(request: Request, context: RouteContext) {
         reason: "mock_payment";
       };
 
-  if (jobSnapshot.payment_mode !== "x402-escrow") {
+  if (!isEscrowPaymentMode(jobSnapshot.payment_mode)) {
     releaseStatus = {
       status: "skipped",
       reason: "mock_payment"
