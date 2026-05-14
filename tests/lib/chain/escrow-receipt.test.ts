@@ -1,11 +1,13 @@
 import {
   createPublicClient,
+  createWalletClient,
   encodeAbiParameters,
   encodeEventTopics,
   type Address
 } from "viem";
 import {
   erc20TransferEventAbi,
+  registerFacilitatorEscrowPayment,
   verifyFacilitatorSettlementReceipt
 } from "@/lib/chain/escrow";
 
@@ -14,7 +16,8 @@ vi.mock("viem", async () => {
 
   return {
     ...actual,
-    createPublicClient: vi.fn()
+    createPublicClient: vi.fn(),
+    createWalletClient: vi.fn()
   };
 });
 
@@ -25,6 +28,9 @@ describe("verifyFacilitatorSettlementReceipt", () => {
   const txHash =
     "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const getTransactionReceipt = vi.fn();
+  const simulateContract = vi.fn();
+  const waitForTransactionReceipt = vi.fn();
+  const writeContract = vi.fn();
 
   function transferLog(params: {
     tokenAddress?: Address;
@@ -56,8 +62,24 @@ describe("verifyFacilitatorSettlementReceipt", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createPublicClient).mockReturnValue({
-      getTransactionReceipt
+      getTransactionReceipt,
+      simulateContract,
+      waitForTransactionReceipt
     } as never);
+    vi.mocked(createWalletClient).mockReturnValue({
+      writeContract
+    } as never);
+    simulateContract.mockResolvedValue({
+      request: {
+        address: escrow
+      }
+    });
+    writeContract.mockResolvedValue(
+      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    );
+    waitForTransactionReceipt.mockResolvedValue({
+      status: "success"
+    });
   });
 
   it("accepts a successful ERC20 transfer into the quote escrow for the exact amount", async () => {
@@ -148,5 +170,51 @@ describe("verifyFacilitatorSettlementReceipt", () => {
     ).rejects.toMatchObject({
       code: "TX_TOKEN_TRANSFER_MISSING"
     });
+  });
+
+  it("maps registration simulation duplicate settlement errors before broadcasting", async () => {
+    simulateContract.mockRejectedValue(
+      new Error("Execution reverted with custom error 'SettlementAlreadyRegistered()'")
+    );
+
+    await expect(
+      registerFacilitatorEscrowPayment({
+        paymentId: txHash,
+        buyerId: buyer,
+        sellerId: "0x5555555555555555555555555555555555555555",
+        amountAtomic: "10000",
+        settlementTxHash: txHash,
+        rpcUrl: "https://rpc.gokite.ai/",
+        escrowAddress: escrow,
+        gatewayPrivateKey:
+          "0x1111111111111111111111111111111111111111111111111111111111111111"
+      })
+    ).rejects.toMatchObject({
+      code: "SETTLEMENT_ALREADY_REGISTERED"
+    });
+    expect(writeContract).not.toHaveBeenCalled();
+  });
+
+  it("maps mined registration reverts to escrow registration failure", async () => {
+    waitForTransactionReceipt.mockResolvedValue({
+      status: "reverted"
+    });
+
+    await expect(
+      registerFacilitatorEscrowPayment({
+        paymentId: txHash,
+        buyerId: buyer,
+        sellerId: "0x5555555555555555555555555555555555555555",
+        amountAtomic: "10000",
+        settlementTxHash: txHash,
+        rpcUrl: "https://rpc.gokite.ai/",
+        escrowAddress: escrow,
+        gatewayPrivateKey:
+          "0x1111111111111111111111111111111111111111111111111111111111111111"
+      })
+    ).rejects.toMatchObject({
+      code: "ESCROW_REGISTRATION_FAILED"
+    });
+    expect(writeContract).toHaveBeenCalled();
   });
 });

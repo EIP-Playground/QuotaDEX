@@ -406,6 +406,37 @@ export async function recoverExcessEscrowPaymentToken(params: {
   };
 }
 
+function mapEscrowRegistrationError(reason: string): EscrowGatewayActionError {
+  if (reason.includes("SettlementAlreadyRegistered")) {
+    return new EscrowGatewayActionError(
+      "Settlement transaction hash has already been registered.",
+      "SETTLEMENT_ALREADY_REGISTERED"
+    );
+  }
+
+  if (reason.includes("PaymentAlreadyExists")) {
+    return new EscrowGatewayActionError(
+      "Payment has already been registered.",
+      "PAYMENT_ALREADY_REGISTERED"
+    );
+  }
+
+  if (
+    reason.includes("EscrowBalanceInsufficient") ||
+    reason.includes("PaymentNotFunded")
+  ) {
+    return new EscrowGatewayActionError(
+      "Escrow balance is insufficient for this payment registration.",
+      "ESCROW_REGISTRATION_FAILED"
+    );
+  }
+
+  return new EscrowGatewayActionError(
+    `Escrow payment registration failed: ${reason}`,
+    "ESCROW_REGISTRATION_FAILED"
+  );
+}
+
 export async function registerFacilitatorEscrowPayment(params: {
   paymentId: string;
   buyerId: string;
@@ -458,45 +489,30 @@ export async function registerFacilitatorEscrowPayment(params: {
   });
 
   let txHash: Hex;
+  let request;
 
   try {
-    txHash = await walletClient.writeContract({
+    const simulation = await publicClient.simulateContract({
+      account,
       chain: undefined,
       address: escrowAddress,
       abi: escrowAbi,
       functionName: "registerFacilitatorPayment",
       args: [paymentId, buyerAddress, sellerAddress, amount, settlementTxHash]
     });
+
+    request = simulation.request;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "Unknown contract error.";
+    throw mapEscrowRegistrationError(
+      error instanceof Error ? error.message : "Unknown contract error."
+    );
+  }
 
-    if (reason.includes("SettlementAlreadyRegistered")) {
-      throw new EscrowGatewayActionError(
-        "Settlement transaction hash has already been registered.",
-        "SETTLEMENT_ALREADY_REGISTERED"
-      );
-    }
-
-    if (reason.includes("PaymentAlreadyExists")) {
-      throw new EscrowGatewayActionError(
-        "Payment has already been registered.",
-        "PAYMENT_ALREADY_REGISTERED"
-      );
-    }
-
-    if (
-      reason.includes("EscrowBalanceInsufficient") ||
-      reason.includes("PaymentNotFunded")
-    ) {
-      throw new EscrowGatewayActionError(
-        "Escrow balance is insufficient for this payment registration.",
-        "ESCROW_REGISTRATION_FAILED"
-      );
-    }
-
-    throw new EscrowGatewayActionError(
-      `Escrow payment registration failed: ${reason}`,
-      "ESCROW_REGISTRATION_FAILED"
+  try {
+    txHash = await walletClient.writeContract(request);
+  } catch (error) {
+    throw mapEscrowRegistrationError(
+      error instanceof Error ? error.message : "Unknown contract error."
     );
   }
 
@@ -507,7 +523,7 @@ export async function registerFacilitatorEscrowPayment(params: {
   if (receipt.status !== "success") {
     throw new EscrowGatewayActionError(
       "Escrow facilitator registration transaction did not succeed.",
-      "GATEWAY_ACTION_RECEIPT_FAILED"
+      "ESCROW_REGISTRATION_FAILED"
     );
   }
 

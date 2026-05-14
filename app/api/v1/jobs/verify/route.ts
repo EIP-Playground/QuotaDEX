@@ -15,7 +15,7 @@ import {
   EscrowGatewayActionError,
   executeEscrowGatewayAction,
   InvalidEscrowReceiptError,
-  recoverExcessEscrowPaymentToken,
+  looksLikeOnChainTxHash,
   registerFacilitatorEscrowPayment,
   verifyFacilitatorSettlementReceipt
 } from "@/lib/chain/escrow";
@@ -54,6 +54,20 @@ type PaymentVerificationProgress = {
   settlementTxHash: string | null;
   escrowRegistered: boolean;
 };
+
+function quoteMatchesActiveNetworkProfile(
+  quoteContext: NonNullable<Awaited<ReturnType<typeof loadQuoteContext>>>,
+  networkProfile: PaymentNetworkProfile
+): boolean {
+  return (
+    quoteContext.pay_to.toLowerCase() ===
+      networkProfile.escrowContractAddress.toLowerCase() &&
+    quoteContext.payment_asset.toLowerCase() ===
+      networkProfile.paymentAssetAddress.toLowerCase() &&
+    quoteContext.network === networkProfile.network &&
+    quoteContext.chain_id === networkProfile.chainId
+  );
+}
 
 function summarizeFacilitatorPayload(xPaymentHeader: string) {
   try {
@@ -159,19 +173,19 @@ async function verifyPaymentForRequest(params: {
         settleResponse
       );
     }
-    if (params.progress) {
-      params.progress.settlementTxHash = settlementTxHash;
-    }
-
     await verifyFacilitatorSettlementReceipt({
       txHash: settlementTxHash,
       paymentId: params.quoteContext.payment_id,
       buyerId: params.verifyRequest.payload.buyer_id,
       amountAtomic: params.quoteContext.amount_atomic,
       rpcUrl: params.networkProfile.rpcUrl,
-      tokenAddress: params.quoteContext.payment_asset,
-      escrowAddress: params.quoteContext.pay_to
+      tokenAddress: params.networkProfile.paymentAssetAddress,
+      escrowAddress: params.networkProfile.escrowContractAddress
     });
+
+    if (params.progress) {
+      params.progress.settlementTxHash = settlementTxHash;
+    }
 
     const escrowRegistration = await registerFacilitatorEscrowPayment({
       paymentId: params.quoteContext.payment_id,
@@ -180,7 +194,7 @@ async function verifyPaymentForRequest(params: {
       amountAtomic: params.quoteContext.amount_atomic,
       settlementTxHash,
       rpcUrl: params.networkProfile.rpcUrl,
-      escrowAddress: params.quoteContext.pay_to,
+      escrowAddress: params.networkProfile.escrowContractAddress,
       gatewayPrivateKey: params.networkProfile.gatewayPrivateKey
     });
     if (params.progress) {
@@ -243,8 +257,8 @@ async function verifyPaymentForRequest(params: {
       buyerId: params.verifyRequest.payload.buyer_id,
       amountAtomic: params.quoteContext.amount_atomic,
       rpcUrl: params.networkProfile.rpcUrl,
-      tokenAddress: params.quoteContext.payment_asset,
-      escrowAddress: params.quoteContext.pay_to
+      tokenAddress: params.networkProfile.paymentAssetAddress,
+      escrowAddress: params.networkProfile.escrowContractAddress
     });
 
     if (params.progress) {
@@ -258,7 +272,7 @@ async function verifyPaymentForRequest(params: {
       amountAtomic: params.quoteContext.amount_atomic,
       settlementTxHash: params.txHash,
       rpcUrl: params.networkProfile.rpcUrl,
-      escrowAddress: params.quoteContext.pay_to,
+      escrowAddress: params.networkProfile.escrowContractAddress,
       gatewayPrivateKey: params.networkProfile.gatewayPrivateKey
     });
 
@@ -380,13 +394,10 @@ export async function POST(request: Request) {
     );
   }
 
-  if (
-    quoteContext.pay_to.toLowerCase() !==
-    networkProfile.escrowContractAddress.toLowerCase()
-  ) {
+  if (!quoteMatchesActiveNetworkProfile(quoteContext, networkProfile)) {
     return conflictResponse(
-      "Quote escrow contract is no longer active. Request a fresh quote.",
-      "QUOTE_ESCROW_MISMATCH"
+      "Quote payment network profile is no longer active. Request a fresh quote.",
+      "QUOTE_PAYMENT_PROFILE_MISMATCH"
     );
   }
 
@@ -398,6 +409,18 @@ export async function POST(request: Request) {
     return badRequestResponse(
       "X-PAYMENT header is required for production payment verification.",
       "X_PAYMENT_REQUIRED"
+    );
+  }
+
+  if (
+    !xPaymentHeader &&
+    networkProfile.allowMockPayments !== "true" &&
+    networkProfile.allowDirectEscrowPayments === "true" &&
+    (!verifyRequest.tx_hash || !looksLikeOnChainTxHash(verifyRequest.tx_hash))
+  ) {
+    return badRequestResponse(
+      "tx_hash must be a 32-byte transaction hash for direct escrow payment verification.",
+      "INVALID_TX_HASH"
     );
   }
 
@@ -476,34 +499,12 @@ export async function POST(request: Request) {
 
   async function cleanupFailedPaymentVerification(reason: string) {
     if (verificationProgress.settlementTxHash && !verificationProgress.escrowRegistered) {
-      try {
-        const recovery = await recoverExcessEscrowPaymentToken({
-          recipientAddress: activeQuoteContext.buyer_id,
-          amountAtomic: activeQuoteContext.amount_atomic,
-          rpcUrl: networkProfile.rpcUrl,
-          escrowAddress: activeQuoteContext.pay_to,
-          gatewayPrivateKey: networkProfile.gatewayPrivateKey
-        });
-
-        console.error("Recovered unregistered escrow payment after verify failure", {
-          paymentId: activeQuoteContext.payment_id,
-          jobId: settlingJob.id,
-          settlementTxHash: verificationProgress.settlementTxHash,
-          recoveryTxHash: recovery.txHash,
-          reason
-        });
-      } catch (recoveryError) {
-        console.error("Failed to recover unregistered escrow payment after verify failure", {
-          paymentId: activeQuoteContext.payment_id,
-          jobId: settlingJob.id,
-          settlementTxHash: verificationProgress.settlementTxHash,
-          reason,
-          recoveryReason:
-            recoveryError instanceof Error
-              ? recoveryError.message
-              : "Unknown escrow recovery error."
-        });
-      }
+      console.error("Escrow transfer verified but payment was not registered", {
+        paymentId: activeQuoteContext.payment_id,
+        jobId: settlingJob.id,
+        settlementTxHash: verificationProgress.settlementTxHash,
+        reason
+      });
     }
 
     try {
