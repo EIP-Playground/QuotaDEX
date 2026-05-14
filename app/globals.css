@@ -1228,6 +1228,19 @@ a {
   font-weight: 500;
 }
 
+.explorerLink {
+  color: inherit;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.explorerLink:hover,
+.explorerLink:focus-visible {
+  color: var(--gold);
+  outline: none;
+  text-decoration: underline;
+}
+
 .obPrice {
   color: var(--gold);
   font-weight: 600;

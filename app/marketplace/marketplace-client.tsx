@@ -70,6 +70,13 @@ type SettlementRow = {
   txHash: string;
   timestamp: string;
 };
+type Settlement = {
+  id: string;
+  cap: string;
+  amount: string;
+  txHash?: string;
+  type?: "released" | "refunded";
+};
 type ActivityBucket = {
   hour: string;
   createdJobs: number;
@@ -80,6 +87,10 @@ type EventItem = { id: string; type: string; title: string; message: string; tim
 const CAPS = ["GPT-4-Turbo", "Llama-3 8B", "Mixtral 8x7B", "Claude Haiku", "Gemini Pro", "Llama-3 70B"];
 const AGENTS = ["Agent_X", "Agent_Y", "Agent_Z", "Agent_A7", "Agent_K2", "Agent_M9"];
 const TOP_SELLERS = ["Alpha-Node-01", "Genesis-GPU", "Aurora-7x", "Nebula-K8", "Prime-Compute"];
+const KITE_TESTNET_EXPLORER_URL = "https://testnet.kitescan.ai";
+const KITE_MAINNET_EXPLORER_URL = "https://kitescan.ai";
+const EVM_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
 
 function randomHex(len: number) {
   return Math.random().toString(16).slice(2, 2 + len).padEnd(len, "0");
@@ -119,6 +130,30 @@ function shortHash(value: string) {
   return `${value.slice(0, 8)}…${value.slice(-4)}`;
 }
 
+function getExplorerBaseUrl(mode: DashboardMode, liveNetwork: LiveNetwork) {
+  if (mode !== "live") {
+    return null;
+  }
+
+  return liveNetwork === "mainnet" ? KITE_MAINNET_EXPLORER_URL : KITE_TESTNET_EXPLORER_URL;
+}
+
+function addressExplorerUrl(address: string, explorerBaseUrl: string | null) {
+  if (!explorerBaseUrl || !EVM_ADDRESS_RE.test(address)) {
+    return null;
+  }
+
+  return `${explorerBaseUrl}/address/${address}`;
+}
+
+function txExplorerUrl(txHash: string, explorerBaseUrl: string | null) {
+  if (!explorerBaseUrl || !TX_HASH_RE.test(txHash)) {
+    return null;
+  }
+
+  return `${explorerBaseUrl}/tx/${txHash}`;
+}
+
 function formatVolume(value: number, mode: DashboardMode) {
   if (mode === "demo" || value >= 1000) {
     return `${(value / 1000).toFixed(1)}k`;
@@ -144,6 +179,34 @@ function normalizeSellerStatus(status: string): SellerStatus {
   return status === "offline" || status === "idle" || status === "reserved" || status === "busy"
     ? status
     : "offline";
+}
+
+function ExplorerLink({
+  ariaLabel,
+  children,
+  className,
+  href
+}: {
+  ariaLabel: string;
+  children: React.ReactNode;
+  className: string;
+  href: string | null;
+}) {
+  if (!href) {
+    return <span className={className}>{children}</span>;
+  }
+
+  return (
+    <a
+      aria-label={ariaLabel}
+      className={`${className} explorerLink`}
+      href={href}
+      rel="noreferrer"
+      target="_blank"
+    >
+      {children}
+    </a>
+  );
 }
 
 function Sparkline({ data, color = "#c8a435" }: { data: number[]; color?: string }) {
@@ -294,7 +357,7 @@ export function MarketplaceClient({
   const [txns, setTxns] = useState<Txn[]>(() =>
     Array.from({ length: 6 }, (_, i) => makeTxn(i * 3, i))
   );
-  const [settlements, setSettlements] = useState<Array<{ id: string; cap: string; amount: string }>>(
+  const [settlements, setSettlements] = useState<Settlement[]>(
     () =>
       Array.from({ length: 5 }, (_, i) => ({
         id: `0x${randomHex(8)}…${randomHex(4)}`,
@@ -305,6 +368,7 @@ export function MarketplaceClient({
   const [topSellers, setTopSellers] = useState<TopSellerRow[]>([]);
   const [activity24h, setActivity24h] = useState<ActivityBucket[]>([]);
   const isLiveTestnet = mode === "live" && liveNetwork === "testnet";
+  const explorerBaseUrl = getExplorerBaseUrl(mode, liveNetwork);
   const dashboardCurrency =
     mode === "demo" ? "USDT" : liveNetwork === "mainnet" ? "USDC" : "USDT/USDC";
   const dashboardBadge =
@@ -429,9 +493,11 @@ export function MarketplaceClient({
         const settled: SettlementRow[] = market.recentSettlements ?? [];
         setSettlements(
           settled.slice(0, 5).map((settlement) => ({
-            id: shortHash(settlement.txHash),
+            id: settlement.txHash,
             cap: `${settlement.type} · ${settlement.capability}`,
-            amount: settlement.type === "refunded" ? `-${settlement.amount}` : settlement.amount
+            amount: settlement.type === "refunded" ? `-${settlement.amount}` : settlement.amount,
+            txHash: settlement.txHash,
+            type: settlement.type
           }))
         );
       } catch {
@@ -526,9 +592,13 @@ export function MarketplaceClient({
                     orderBook.map((s) => (
                       <tr key={s.id}>
                         <td>
-                          <span className="obSeller">
+                          <ExplorerLink
+                            ariaLabel={`View registered seller ${s.id} on Kitescan`}
+                            className="obSeller"
+                            href={addressExplorerUrl(s.id, explorerBaseUrl)}
+                          >
                             {shortHash(s.id)}
-                          </span>
+                          </ExplorerLink>
                         </td>
                         <td style={{ color: "var(--muted)" }}>{s.cap}</td>
                         <td className="obPrice">{s.price}</td>
@@ -627,9 +697,13 @@ export function MarketplaceClient({
                     topSellers.map((seller) => (
                       <div key={seller.sellerId} className="agent">
                         <div>
-                          <div className="agentId">
+                          <ExplorerLink
+                            ariaLabel={`View top seller ${seller.sellerId} on Kitescan`}
+                            className="agentId"
+                            href={addressExplorerUrl(seller.sellerId, explorerBaseUrl)}
+                          >
                             {shortHash(seller.sellerId)}
-                          </div>
+                          </ExplorerLink>
                           <div className="agentCap">
                             {seller.capability} · {seller.completedJobs24h} jobs settled
                           </div>
@@ -665,7 +739,13 @@ export function MarketplaceClient({
                   settlements.map((s, i) => (
                     <div key={`${s.id}-${i}`} className="agent">
                       <div>
-                        <div className="agentId">{s.id}</div>
+                        <ExplorerLink
+                          ariaLabel={`View ${s.type ?? "settlement"} transaction ${s.txHash ?? s.id} on Kitescan`}
+                          className="agentId"
+                          href={txExplorerUrl(s.txHash ?? "", explorerBaseUrl)}
+                        >
+                          {s.txHash ? shortHash(s.txHash) : s.id}
+                        </ExplorerLink>
                         <div className="agentCap">
                           {mode === "live" ? s.cap : `Escrow.release · ${s.cap}`}
                         </div>
