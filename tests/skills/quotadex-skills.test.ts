@@ -37,6 +37,9 @@ describe("QuotaDEX agent skills", () => {
     expect(seller).toMatch(/\/api\/v1\/sellers\/session\/challenge/);
     expect(seller).toMatch(/kpass wallet send/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/session/);
+    expect(seller).toMatch(/Renew the Gateway seller session/);
+    expect(seller).toMatch(/SELLER_RENEWAL_TOKEN/);
+    expect(seller).toMatch(/del\(\.seller_renewal_token\)/);
     expect(seller).toMatch(/Authorization: Bearer \$SELLER_SESSION_TOKEN/);
     expect(seller).toMatch(/heartbeat/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/jobs/);

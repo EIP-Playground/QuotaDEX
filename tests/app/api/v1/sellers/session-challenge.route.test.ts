@@ -38,7 +38,13 @@ describe("POST /api/v1/sellers/session/challenge", () => {
     sellerMaybeSingle.mockResolvedValue({
       data: {
         id: sellerId,
-        approval_status: "approved"
+        approval_status: "approved",
+        passport_agent_id: null,
+        passport_payer_addr: sellerId,
+        passport_subject: null,
+        bond_status: "unverified",
+        bond_tx_hash: null,
+        bond_renewal_token_hash: null
       },
       error: null
     });
@@ -89,6 +95,111 @@ describe("POST /api/v1/sellers/session/challenge", () => {
         proof_token_address: "0x8888888888888888888888888888888888888888",
         proof_token_symbol: "USDC",
         status: "pending"
+      })
+    );
+  });
+
+  it("does not create another seller bond challenge once the same wallet is verified", async () => {
+    sellerMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: sellerId,
+        approval_status: "approved",
+        passport_agent_id: "agent-seller-1",
+        passport_payer_addr: sellerId,
+        passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
+        bond_status: "verified",
+        bond_tx_hash:
+          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        bond_renewal_token_hash: "hashed-renewal-token"
+      },
+      error: null
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/session/challenge", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          passport_agent_id: "agent-seller-1"
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      status: "already_verified",
+      seller_id: sellerId,
+      network_profile: "live-mainnet"
+    });
+    expect(body.kpass_command).toBeUndefined();
+    expect(challengeInsert).not.toHaveBeenCalled();
+  });
+
+  it("creates a new challenge when a historical verified bond has no renewal token", async () => {
+    sellerMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: sellerId,
+        approval_status: "approved",
+        passport_agent_id: "agent-seller-1",
+        passport_payer_addr: sellerId,
+        passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
+        bond_status: "verified",
+        bond_tx_hash:
+          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        bond_renewal_token_hash: null
+      },
+      error: null
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/session/challenge", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          passport_agent_id: "agent-seller-1"
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("ok");
+    expect(challengeInsert).toHaveBeenCalled();
+  });
+
+  it("creates a new challenge when the seller agent id changed", async () => {
+    sellerMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: sellerId,
+        approval_status: "approved",
+        passport_agent_id: "agent-seller-1",
+        passport_payer_addr: sellerId,
+        passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
+        bond_status: "verified",
+        bond_tx_hash:
+          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        bond_renewal_token_hash: "hashed-renewal-token"
+      },
+      error: null
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/session/challenge", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          passport_agent_id: "agent-seller-2"
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("ok");
+    expect(challengeInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        passport_agent_id: "agent-seller-2"
       })
     );
   });
