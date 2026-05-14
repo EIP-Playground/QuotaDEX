@@ -24,6 +24,16 @@ type SellerChallengeRow = {
   expires_at: string;
 };
 
+type SellerRow = {
+  approval_status: string | null;
+  passport_agent_id: string | null;
+  passport_payer_addr: string | null;
+  passport_subject: string | null;
+  bond_status: string | null;
+  bond_tx_hash: string | null;
+  bond_renewal_token_hash: string | null;
+};
+
 function normalizeSellerAddress(value: string): string {
   if (!isAddress(value)) {
     throw new Error("seller_id must be a valid EVM address.");
@@ -105,7 +115,9 @@ export async function POST(request: Request) {
   const supabase = createServerSupabaseClient();
   const { data: seller, error: readError } = await supabase
     .from("sellers")
-    .select("id, approval_status")
+    .select(
+      "id, approval_status, passport_agent_id, passport_payer_addr, passport_subject, bond_status, bond_tx_hash, bond_renewal_token_hash"
+    )
     .eq("id", sellerIdentity.seller_id)
     .eq("network_profile", sellerIdentity.network_profile)
     .maybeSingle();
@@ -122,13 +134,45 @@ export async function POST(request: Request) {
     return notFoundResponse("Seller not found.", "SELLER_NOT_FOUND");
   }
 
-  const sellerRow = seller as { approval_status: string | null };
+  const sellerRow = seller as SellerRow;
 
   if (sellerRow.approval_status && sellerRow.approval_status !== "approved") {
     return forbiddenResponse(
       "Seller is not approved for Gateway sessions.",
       "SELLER_NOT_APPROVED"
     );
+  }
+
+  if (
+    sellerRow.passport_payer_addr &&
+    sellerRow.passport_payer_addr.toLowerCase() !==
+      sellerIdentity.seller_id.toLowerCase()
+  ) {
+    return forbiddenResponse(
+      "Passport payer address does not match seller_id.",
+      "SELLER_PASSPORT_MISMATCH"
+    );
+  }
+
+  const hasReusableBond =
+    sellerRow.bond_status === "verified" &&
+    sellerRow.bond_tx_hash &&
+    sellerRow.bond_renewal_token_hash &&
+    sellerRow.passport_agent_id === sellerIdentity.passport_agent_id &&
+    sellerRow.passport_payer_addr?.toLowerCase() ===
+      sellerIdentity.seller_id.toLowerCase() &&
+    sellerRow.passport_subject ===
+      `wallet-proof:${sellerIdentity.seller_id.toLowerCase()}`;
+
+  if (hasReusableBond) {
+    return NextResponse.json({
+      status: "already_verified",
+      seller_id: sellerIdentity.seller_id,
+      passport_agent_id: sellerIdentity.passport_agent_id,
+      network_profile: sellerIdentity.network_profile,
+      message:
+        "Seller bond is already verified. Renew the seller session without challenge_id or tx_hash."
+    });
   }
 
   const now = new Date().toISOString();

@@ -17,6 +17,11 @@ import {
   verifyPassportBearerToken
 } from "@/lib/passport-auth";
 import {
+  createSellerRenewalToken,
+  hashSellerRenewalToken,
+  verifySellerRenewalToken
+} from "@/lib/seller-renewal-token";
+import {
   SellerBondReceiptError,
   verifySellerBondTransferReceipt
 } from "@/lib/seller-bond";
@@ -30,6 +35,7 @@ type SellerSessionRequest = {
   network_profile: NetworkProfileId;
   challenge_id?: string;
   tx_hash?: string;
+  seller_renewal_token?: string;
 };
 
 type SellerSessionRow = {
@@ -37,6 +43,11 @@ type SellerSessionRow = {
   passport_agent_id: string | null;
   passport_payer_addr: string | null;
   passport_subject: string | null;
+  passport_email: string | null;
+  bond_status: string | null;
+  bond_tx_hash: string | null;
+  bond_verified_at: string | null;
+  bond_renewal_token_hash: string | null;
   approval_status: string | null;
 };
 
@@ -65,6 +76,20 @@ type VerifiedSellerIdentity = {
   subject: string;
   email: string | null;
   authMethod: "passport_rs256" | "seller_bond";
+  bond?: {
+    challengeId: string;
+    txHash: string;
+    verifiedAt: string;
+    receiverAddress: string;
+    tokenAddress: string;
+    tokenSymbol: string;
+    amountAtomic: string;
+    amountDisplay: string;
+    renewalToken: string;
+    renewalTokenHash: string;
+    renewalTokenIssuedAt: string;
+  };
+  skipSellerUpdate?: boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,6 +119,11 @@ function parseSellerSessionRequest(input: unknown): SellerSessionRequest {
     typeof input.tx_hash === "string" && input.tx_hash.trim() !== ""
       ? input.tx_hash.trim()
       : undefined;
+  const sellerRenewalToken =
+    typeof input.seller_renewal_token === "string" &&
+    input.seller_renewal_token.trim() !== ""
+      ? input.seller_renewal_token.trim()
+      : undefined;
 
   return {
     seller_id: readRequiredString(input, "seller_id"),
@@ -105,7 +135,8 @@ function parseSellerSessionRequest(input: unknown): SellerSessionRequest {
       "live-mainnet"
     ),
     challenge_id: challengeId,
-    tx_hash: txHash
+    tx_hash: txHash,
+    seller_renewal_token: sellerRenewalToken
   };
 }
 
@@ -147,6 +178,28 @@ function applyExistingValueFilter<Query extends ExistingValueFilterQuery>(
   }
 
   return query.is(column, null) as Query;
+}
+
+function hasReusableSellerBond(params: {
+  seller: SellerSessionRow;
+  sellerId: string;
+  passportAgentId: string;
+  renewalToken?: string;
+  secret: string;
+}) {
+  return (
+    params.seller.bond_status === "verified" &&
+    params.seller.bond_tx_hash &&
+    params.seller.passport_agent_id === params.passportAgentId &&
+    params.seller.passport_payer_addr?.toLowerCase() ===
+      params.sellerId.toLowerCase() &&
+    params.seller.passport_subject === sellerBondSubject(params.sellerId) &&
+    verifySellerRenewalToken({
+      token: params.renewalToken,
+      expectedHash: params.seller.bond_renewal_token_hash,
+      secret: params.secret
+    })
+  );
 }
 
 export async function POST(request: Request) {
@@ -203,6 +256,36 @@ export async function POST(request: Request) {
     sessionRequest.challenge_id && sessionRequest.tx_hash
   );
   let verifiedSeller: VerifiedSellerIdentity;
+
+  const { data: seller, error: readError } = await supabase
+    .from("sellers")
+    .select(
+      "id, passport_agent_id, passport_payer_addr, passport_subject, passport_email, bond_status, bond_tx_hash, bond_verified_at, bond_renewal_token_hash, approval_status"
+    )
+    .eq("id", sessionRequest.seller_id)
+    .eq("network_profile", sessionRequest.network_profile)
+    .maybeSingle();
+
+  if (readError) {
+    return internalServerErrorResponse(
+      "Failed to load seller for session.",
+      "SELLER_READ_FAILED",
+      { reason: readError.message }
+    );
+  }
+
+  if (!seller) {
+    return notFoundResponse("Seller not found.", "SELLER_NOT_FOUND");
+  }
+
+  const sellerRow = seller as SellerSessionRow;
+
+  if (sellerRow.approval_status && sellerRow.approval_status !== "approved") {
+    return forbiddenResponse(
+      "Seller is not approved for Gateway sessions.",
+      "SELLER_NOT_APPROVED"
+    );
+  }
 
   if (hasSellerBondProof) {
     const { data: challenge, error: challengeReadError } = await supabase
@@ -324,21 +407,29 @@ export async function POST(request: Request) {
       );
     }
 
+    const renewalToken = createSellerRenewalToken();
+
     verifiedSeller = {
       agentId: sessionRequest.passport_agent_id,
       payerAddress: normalizedSellerId,
       subject: sellerBondSubject(normalizedSellerId),
       email: null,
-      authMethod: "seller_bond"
+      authMethod: "seller_bond",
+      bond: {
+        challengeId: challengeRow.id,
+        txHash: sessionRequest.tx_hash as string,
+        verifiedAt,
+        receiverAddress: challengeRow.proof_receiver_address,
+        tokenAddress: challengeRow.proof_token_address,
+        tokenSymbol: challengeRow.proof_token_symbol,
+        amountAtomic: challengeRow.amount_atomic,
+        amountDisplay: challengeRow.amount_display,
+        renewalToken,
+        renewalTokenHash: hashSellerRenewalToken(renewalToken, env.GATEWAY_SALT),
+        renewalTokenIssuedAt: verifiedAt
+      }
     };
-  } else {
-    if (!passportToken) {
-      return forbiddenResponse(
-        "Passport bearer token or seller bond proof is required to create a seller session.",
-        "PASSPORT_AUTH_REQUIRED"
-      );
-    }
-
+  } else if (passportToken) {
     let identity: Awaited<ReturnType<typeof verifyPassportBearerToken>>;
 
     try {
@@ -387,41 +478,34 @@ export async function POST(request: Request) {
       email: identity.email,
       authMethod: "passport_rs256"
     };
-  }
-
-  const { data: seller, error: readError } = await supabase
-    .from("sellers")
-    .select(
-      "id, passport_agent_id, passport_payer_addr, passport_subject, approval_status"
-    )
-    .eq("id", sessionRequest.seller_id)
-    .eq("network_profile", sessionRequest.network_profile)
-    .maybeSingle();
-
-  if (readError) {
-    return internalServerErrorResponse(
-      "Failed to load seller for session.",
-      "SELLER_READ_FAILED",
-      { reason: readError.message }
-    );
-  }
-
-  if (!seller) {
-    return notFoundResponse("Seller not found.", "SELLER_NOT_FOUND");
-  }
-
-  const sellerRow = seller as SellerSessionRow;
-
-  if (sellerRow.approval_status && sellerRow.approval_status !== "approved") {
+  } else if (
+    hasReusableSellerBond({
+      seller: sellerRow,
+      sellerId: normalizedSellerId,
+      passportAgentId: sessionRequest.passport_agent_id,
+      renewalToken: sessionRequest.seller_renewal_token,
+      secret: env.GATEWAY_SALT
+    })
+  ) {
+    verifiedSeller = {
+      agentId: sessionRequest.passport_agent_id,
+      payerAddress: normalizedSellerId,
+      subject: sellerBondSubject(normalizedSellerId),
+      email: sellerRow.passport_email,
+      authMethod: "seller_bond",
+      skipSellerUpdate: true
+    };
+  } else {
     return forbiddenResponse(
-      "Seller is not approved for Gateway sessions.",
-      "SELLER_NOT_APPROVED"
+      "Passport bearer token, seller bond proof, or an existing verified seller bond is required to create a seller session.",
+      "PASSPORT_AUTH_REQUIRED"
     );
   }
 
   if (
     sellerRow.passport_agent_id &&
-    sellerRow.passport_agent_id !== verifiedSeller.agentId
+    sellerRow.passport_agent_id !== verifiedSeller.agentId &&
+    !verifiedSeller.bond
   ) {
     return forbiddenResponse(
       "Passport agent id does not match the registered seller.",
@@ -441,7 +525,11 @@ export async function POST(request: Request) {
 
   if (
     sellerRow.passport_subject &&
-    sellerRow.passport_subject !== verifiedSeller.subject
+    sellerRow.passport_subject !== verifiedSeller.subject &&
+    !(
+      verifiedSeller.bond &&
+      sellerRow.passport_subject.startsWith("wallet-proof:")
+    )
   ) {
     return forbiddenResponse(
       "Passport user does not own this seller registration.",
@@ -449,51 +537,71 @@ export async function POST(request: Request) {
     );
   }
 
-  let bindQuery = supabase
-    .from("sellers")
-    .update({
+  if (!verifiedSeller.skipSellerUpdate) {
+    const sellerUpdate: Record<string, string | null> = {
       passport_agent_id: verifiedSeller.agentId,
       passport_payer_addr: verifiedSeller.payerAddress,
       passport_subject: verifiedSeller.subject,
       passport_email: verifiedSeller.email,
       updated_at: new Date().toISOString()
-    })
-    .eq("id", sessionRequest.seller_id);
-  bindQuery = bindQuery.eq("network_profile", sessionRequest.network_profile);
+    };
 
-  bindQuery = applyExistingValueFilter(
-    bindQuery,
-    "passport_agent_id",
-    sellerRow.passport_agent_id
-  );
-  bindQuery = applyExistingValueFilter(
-    bindQuery,
-    "passport_payer_addr",
-    sellerRow.passport_payer_addr
-  );
-  bindQuery = applyExistingValueFilter(
-    bindQuery,
-    "passport_subject",
-    sellerRow.passport_subject
-  );
+    if (verifiedSeller.bond) {
+      sellerUpdate.bond_status = "verified";
+      sellerUpdate.bond_tx_hash = verifiedSeller.bond.txHash;
+      sellerUpdate.bond_verified_at = verifiedSeller.bond.verifiedAt;
+      sellerUpdate.bond_challenge_id = verifiedSeller.bond.challengeId;
+      sellerUpdate.bond_receiver_address = verifiedSeller.bond.receiverAddress;
+      sellerUpdate.bond_token_address = verifiedSeller.bond.tokenAddress;
+      sellerUpdate.bond_token_symbol = verifiedSeller.bond.tokenSymbol;
+      sellerUpdate.bond_amount_atomic = verifiedSeller.bond.amountAtomic;
+      sellerUpdate.bond_amount_display = verifiedSeller.bond.amountDisplay;
+      sellerUpdate.bond_renewal_token_hash =
+        verifiedSeller.bond.renewalTokenHash;
+      sellerUpdate.bond_renewal_token_issued_at =
+        verifiedSeller.bond.renewalTokenIssuedAt;
+    }
 
-  const { data: boundSeller, error: updateError } = await bindQuery
-    .select("id")
-    .maybeSingle();
+    let bindQuery = supabase
+      .from("sellers")
+      .update(sellerUpdate)
+      .eq("id", sessionRequest.seller_id);
+    bindQuery = bindQuery.eq("network_profile", sessionRequest.network_profile);
 
-  if (updateError) {
-    return internalServerErrorResponse(
-      "Failed to bind seller Passport identity.",
-      "SELLER_SESSION_BIND_FAILED",
-      { reason: updateError.message }
+    bindQuery = applyExistingValueFilter(
+      bindQuery,
+      "passport_agent_id",
+      sellerRow.passport_agent_id
     );
-  }
-
-  if (!boundSeller) {
-    return forbiddenResponse(
-      "Seller Passport identity changed before the session could be created.",
-      "SELLER_PASSPORT_MISMATCH"
+    bindQuery = applyExistingValueFilter(
+      bindQuery,
+      "passport_payer_addr",
+      sellerRow.passport_payer_addr
     );
+    bindQuery = applyExistingValueFilter(
+      bindQuery,
+      "passport_subject",
+      sellerRow.passport_subject
+    );
+
+    const { data: boundSeller, error: updateError } = await bindQuery
+      .select("id")
+      .maybeSingle();
+
+    if (updateError) {
+      return internalServerErrorResponse(
+        "Failed to bind seller Passport identity.",
+        "SELLER_SESSION_BIND_FAILED",
+        { reason: updateError.message }
+      );
+    }
+
+    if (!boundSeller) {
+      return forbiddenResponse(
+        "Seller Passport identity changed before the session could be created.",
+        "SELLER_PASSPORT_MISMATCH"
+      );
+    }
   }
 
   const ttlSeconds = Number.parseInt(env.SELLER_SESSION_TTL_SECONDS, 10);
@@ -521,6 +629,7 @@ export async function POST(request: Request) {
     auth_method: verifiedSeller.authMethod,
     token_type: "Bearer",
     seller_session_token: sellerSessionToken,
+    seller_renewal_token: verifiedSeller.bond?.renewalToken,
     expires_in_seconds: normalizedTtlSeconds,
     expires_at: new Date(
       issuedAt.getTime() + normalizedTtlSeconds * 1000

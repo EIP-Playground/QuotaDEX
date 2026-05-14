@@ -1,4 +1,5 @@
 import { verifyPassportBearerToken } from "@/lib/passport-auth";
+import { hashSellerRenewalToken } from "@/lib/seller-renewal-token";
 import { verifySellerBondTransferReceipt } from "@/lib/seller-bond";
 import { verifySellerSessionToken } from "@/lib/seller-session";
 import { createServerSupabaseClient } from "@/lib/supabase";
@@ -85,6 +86,11 @@ describe("POST /api/v1/sellers/session", () => {
         passport_agent_id: null,
         passport_payer_addr: sellerId,
         passport_subject: null,
+        passport_email: null,
+        bond_status: "unverified",
+        bond_tx_hash: null,
+        bond_verified_at: null,
+        bond_renewal_token_hash: null,
         approval_status: "approved"
       },
       error: null
@@ -263,6 +269,7 @@ describe("POST /api/v1/sellers/session", () => {
       token_type: "Bearer",
       auth_method: "seller_bond"
     });
+    expect(typeof body.seller_renewal_token).toBe("string");
     await expect(
       verifySellerSessionToken(body.seller_session_token, "seller-session-secret")
     ).resolves.toMatchObject({
@@ -292,7 +299,270 @@ describe("POST /api/v1/sellers/session", () => {
         passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
         passport_email: null,
         passport_agent_id: "agent-seller-1",
-        passport_payer_addr: sellerId
+        passport_payer_addr: sellerId,
+        bond_status: "verified",
+        bond_tx_hash: txHash,
+        bond_challenge_id: "challenge-1",
+        bond_receiver_address: "0x7777777777777777777777777777777777777777",
+        bond_token_address: "0x8888888888888888888888888888888888888888",
+        bond_token_symbol: "USDC",
+        bond_amount_atomic: "10000000000000000",
+        bond_amount_display: "0.01",
+        bond_renewal_token_hash: expect.any(String),
+        bond_renewal_token_issued_at: expect.any(String)
+      })
+    );
+  });
+
+  it("rejects a verified bond renewal without the private renewal token", async () => {
+    const previousBondTx =
+      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    maybeSingle.mockResolvedValueOnce({
+      data: {
+        id: sellerId,
+        passport_agent_id: "agent-seller-1",
+        passport_payer_addr: sellerId,
+        passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
+        passport_email: null,
+        bond_status: "verified",
+        bond_tx_hash: previousBondTx,
+        bond_verified_at: "2026-05-14T10:00:00.000Z",
+        bond_renewal_token_hash: hashSellerRenewalToken(
+          "seller-renewal-secret",
+          "seller-session-secret"
+        ),
+        approval_status: "approved"
+      },
+      error: null
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/session", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          passport_agent_id: "agent-seller-1"
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("PASSPORT_AUTH_REQUIRED");
+    expect(verifyPassportBearerToken).not.toHaveBeenCalled();
+    expect(verifySellerBondTransferReceipt).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("renews a seller session from an existing verified bond without another transfer", async () => {
+    const previousBondTx =
+      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const renewalToken = "seller-renewal-secret";
+    maybeSingle.mockResolvedValueOnce({
+      data: {
+        id: sellerId,
+        passport_agent_id: "agent-seller-1",
+        passport_payer_addr: sellerId,
+        passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
+        passport_email: null,
+        bond_status: "verified",
+        bond_tx_hash: previousBondTx,
+        bond_verified_at: "2026-05-14T10:00:00.000Z",
+        bond_renewal_token_hash: hashSellerRenewalToken(
+          renewalToken,
+          "seller-session-secret"
+        ),
+        approval_status: "approved"
+      },
+      error: null
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/session", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          passport_agent_id: "agent-seller-1",
+          seller_renewal_token: renewalToken
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      status: "ok",
+      seller_id: sellerId,
+      token_type: "Bearer",
+      auth_method: "seller_bond"
+    });
+    await expect(
+      verifySellerSessionToken(body.seller_session_token, "seller-session-secret")
+    ).resolves.toMatchObject({
+      sellerId,
+      passportAgentId: "agent-seller-1",
+      passportSubject: `wallet-proof:${sellerId.toLowerCase()}`,
+      networkProfile: "live-mainnet"
+    });
+    expect(verifyPassportBearerToken).not.toHaveBeenCalled();
+    expect(verifySellerBondTransferReceipt).not.toHaveBeenCalled();
+    expect(challengeUpdate).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid seller renewal token", async () => {
+    maybeSingle.mockResolvedValueOnce({
+      data: {
+        id: sellerId,
+        passport_agent_id: "agent-seller-1",
+        passport_payer_addr: sellerId,
+        passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
+        passport_email: null,
+        bond_status: "verified",
+        bond_tx_hash:
+          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        bond_verified_at: "2026-05-14T10:00:00.000Z",
+        bond_renewal_token_hash: hashSellerRenewalToken(
+          "seller-renewal-secret",
+          "seller-session-secret"
+        ),
+        approval_status: "approved"
+      },
+      error: null
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/session", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          passport_agent_id: "agent-seller-1",
+          seller_renewal_token: "wrong-renewal-secret"
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("PASSPORT_AUTH_REQUIRED");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a valid renewal token when the seller agent id does not match", async () => {
+    const renewalToken = "seller-renewal-secret";
+    maybeSingle.mockResolvedValueOnce({
+      data: {
+        id: sellerId,
+        passport_agent_id: "agent-seller-1",
+        passport_payer_addr: sellerId,
+        passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
+        passport_email: null,
+        bond_status: "verified",
+        bond_tx_hash:
+          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        bond_verified_at: "2026-05-14T10:00:00.000Z",
+        bond_renewal_token_hash: hashSellerRenewalToken(
+          renewalToken,
+          "seller-session-secret"
+        ),
+        approval_status: "approved"
+      },
+      error: null
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/session", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          passport_agent_id: "agent-seller-2",
+          seller_renewal_token: renewalToken
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("PASSPORT_AUTH_REQUIRED");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("allows a fresh seller bond proof to rotate the seller agent binding", async () => {
+    const txHash =
+      "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    maybeSingle.mockResolvedValueOnce({
+      data: {
+        id: sellerId,
+        passport_agent_id: "agent-seller-1",
+        passport_payer_addr: sellerId,
+        passport_subject: `wallet-proof:${sellerId.toLowerCase()}`,
+        passport_email: null,
+        bond_status: "verified",
+        bond_tx_hash:
+          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        bond_verified_at: "2026-05-14T10:00:00.000Z",
+        bond_renewal_token_hash: hashSellerRenewalToken(
+          "seller-renewal-secret",
+          "seller-session-secret"
+        ),
+        approval_status: "approved"
+      },
+      error: null
+    });
+    challengeMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: "challenge-2",
+        seller_id: sellerId,
+        passport_agent_id: "agent-seller-2",
+        proof_receiver_address: "0x7777777777777777777777777777777777777777",
+        proof_token_address: "0x8888888888888888888888888888888888888888",
+        proof_token_symbol: "USDC",
+        amount_atomic: "10000000000000000",
+        amount_display: "0.01",
+        network_profile: "live-mainnet",
+        status: "pending",
+        expires_at: new Date(Date.now() + 60_000).toISOString()
+      },
+      error: null
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/sellers/session", {
+        method: "POST",
+        body: JSON.stringify({
+          seller_id: sellerId,
+          passport_agent_id: "agent-seller-2",
+          challenge_id: "challenge-2",
+          tx_hash: txHash
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      status: "ok",
+      seller_id: sellerId,
+      token_type: "Bearer",
+      auth_method: "seller_bond"
+    });
+    expect(typeof body.seller_renewal_token).toBe("string");
+    await expect(
+      verifySellerSessionToken(body.seller_session_token, "seller-session-secret")
+    ).resolves.toMatchObject({
+      sellerId,
+      passportAgentId: "agent-seller-2",
+      passportSubject: `wallet-proof:${sellerId.toLowerCase()}`,
+      networkProfile: "live-mainnet"
+    });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        passport_agent_id: "agent-seller-2",
+        passport_payer_addr: sellerId,
+        bond_status: "verified",
+        bond_tx_hash: txHash,
+        bond_challenge_id: "challenge-2",
+        bond_renewal_token_hash: expect.any(String)
       })
     );
   });
