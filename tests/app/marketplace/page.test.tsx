@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/headers", () => ({
@@ -186,6 +186,90 @@ describe("MarketplacePage", () => {
 
     expect(screen.getByText(/gpt-4o · 3 jobs settled/i)).toBeInTheDocument();
     expect(screen.getByText("+0.0010")).toBeInTheDocument();
+  });
+
+  it("shows each live seller status without mapping offline or reserved sellers to busy", async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (
+        url.includes("/api/v1/dashboard/summary") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
+        return Response.json({
+          metrics: {
+            activeSellers: 4,
+            openJobs: 0,
+            completedJobs: 0,
+            failedJobs: 0,
+            volume24h: 0
+          },
+          activity24h: []
+        });
+      }
+
+      if (
+        url.includes("/api/v1/dashboard/market") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
+        return Response.json({
+          rows: [
+            {
+              sellerId: "0xoffline000000000000000000000000000000000000",
+              capability: "offline-capability",
+              pricePerTask: "0.0010",
+              status: "offline"
+            },
+            {
+              sellerId: "0xreserved0000000000000000000000000000000000",
+              capability: "reserved-capability",
+              pricePerTask: "0.0020",
+              status: "reserved"
+            },
+            {
+              sellerId: "0xbusy000000000000000000000000000000000000",
+              capability: "busy-capability",
+              pricePerTask: "0.0030",
+              status: "busy"
+            },
+            {
+              sellerId: "0xidle000000000000000000000000000000000000",
+              capability: "idle-capability",
+              pricePerTask: "0.0040",
+              status: "idle"
+            }
+          ],
+          topSellers: [],
+          recentSettlements: []
+        });
+      }
+
+      if (
+        url.includes("/api/v1/dashboard/events") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
+        return Response.json({ items: [] });
+      }
+
+      return Response.json({});
+    }) as typeof fetch;
+
+    await renderMarketplacePage();
+
+    fireEvent.click(screen.getByRole("button", { name: /live/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/live · live testnet/i)).toBeInTheDocument();
+    });
+
+    const orderBook = screen.getByRole("table");
+    expect(within(orderBook).getByText("offline")).toBeInTheDocument();
+    expect(within(orderBook).getByText("reserved")).toBeInTheDocument();
+    expect(within(orderBook).getByText("busy")).toBeInTheDocument();
+    expect(within(orderBook).getByText("idle")).toBeInTheDocument();
   });
 
   it("lets Live Dashboard switch from testnet monitoring to mainnet monitoring", async () => {

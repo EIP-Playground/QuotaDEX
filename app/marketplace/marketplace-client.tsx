@@ -24,13 +24,14 @@ import {
   DASHBOARD_LIVE_NETWORK_COOKIE_NAME,
   DASHBOARD_MODE_COOKIE_NAME
 } from "@/lib/dashboard-preferences";
+import type { SellerStatus } from "@/lib/dashboard-types";
 
 type Seller = {
   id: string;
   cap: string;
   base: number;
   price: string;
-  status: "idle" | "busy";
+  status: SellerStatus;
 };
 
 type Txn = {
@@ -137,6 +138,12 @@ function formatHourLabel(value: string) {
   }
 
   return `${String(date.getHours()).padStart(2, "0")}:00`;
+}
+
+function normalizeSellerStatus(status: string): SellerStatus {
+  return status === "offline" || status === "idle" || status === "reserved" || status === "busy"
+    ? status
+    : "offline";
 }
 
 function Sparkline({ data, color = "#c8a435" }: { data: number[]; color?: string }) {
@@ -400,7 +407,7 @@ export function MarketplaceClient({
             cap: r.capability,
             base: parseFloat(r.pricePerTask),
             price: parseFloat(r.pricePerTask).toFixed(4),
-            status: r.status === "idle" ? "idle" : "busy"
+            status: normalizeSellerStatus(r.status)
           }))
         );
 
@@ -512,7 +519,7 @@ export function MarketplaceClient({
                   {orderBook.length === 0 ? (
                     <tr>
                       <td colSpan={4} style={{ textAlign: "center", color: "var(--muted)", padding: "24px 0" }}>
-                        No sellers online
+                        No sellers registered
                       </td>
                     </tr>
                   ) : (
