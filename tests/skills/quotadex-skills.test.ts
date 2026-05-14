@@ -33,6 +33,10 @@ describe("QuotaDEX agent skills", () => {
     expect(buyer).toMatch(/\/api\/v1\/jobs\/verify/);
     expect(buyer).toMatch(/"network_profile":"live-mainnet"/);
     expect(buyer).toMatch(/--assets USDC/);
+    expect(buyer).toMatch(/NO_SELLER_AVAILABLE/);
+    expect(buyer).toMatch(/do not infer availability from website pages or market-monitoring APIs/i);
+    expect(buyer).not.toMatch(/Dashboard/i);
+    expect(buyer).not.toMatch(/\/api\/v1\/dashboard/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/register/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/session\/challenge/);
     expect(seller).toMatch(/kpass wallet send/);

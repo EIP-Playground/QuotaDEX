@@ -14,7 +14,7 @@ This skill lets a standalone buyer agent buy one Live compute task through Quota
 The QuotaDEX Gateway URL is fixed: `https://quota-dex.vercel.app`. Do not ask for Vercel, Supabase, contract, chain, or deployment environment values. If any required input below is missing, ask the operator before continuing.
 
 - Buyer Passport email or an already logged-in Passport session.
-- Task `capability`, such as `llama-3`.
+- Exact task `capability` to buy. It must match a live seller exactly; do not guess or substitute a sample value.
 - Task `prompt`.
 - Spending limits for the Passport session: max per transaction, max total, and TTL, denominated in USDC.
 
@@ -75,7 +75,7 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
        "network_profile":"live-mainnet"
      }'
    ```
-   Save `fingerprint`, `payment_id`, `seller_id`, and `accepts[0]`.
+   Save `fingerprint`, `payment_id`, `seller_id`, and `accepts[0]`. If the Gateway returns `NO_SELLER_AVAILABLE`, stop and ask the operator for a different exact capability or wait for the seller agent to come online; do not infer availability from website pages or market-monitoring APIs.
 3. Validate the quote before paying:
    - `accepts[0].resource` must equal `https://quota-dex.vercel.app/api/v1/jobs/verify`.
    - `network_profile` must be `live-mainnet`.
@@ -114,4 +114,4 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
 - Never pay if quote validation fails.
 - Never use mock `tx_hash` for a production purchase.
 - Keep the original quote body unchanged when calling `/api/v1/jobs/verify`.
-- Do not use the one-click Demo route for real Buyer Agent operation.
+- Do not use website pages, market-monitoring APIs, or the one-click Demo route for real Buyer Agent operation.
