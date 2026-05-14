@@ -272,6 +272,229 @@ describe("MarketplacePage", () => {
     expect(within(orderBook).getByText("idle")).toBeInTheDocument();
   });
 
+  it("links Live Testnet seller addresses and settlement transactions to testnet Kitescan", async () => {
+    const sellerId = "0x1111111111111111111111111111111111111111";
+    const txHash =
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (
+        url.includes("/api/v1/dashboard/summary") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
+        return Response.json({
+          metrics: {
+            activeSellers: 1,
+            openJobs: 0,
+            completedJobs: 1,
+            failedJobs: 0,
+            volume24h: 0.001
+          },
+          activity24h: []
+        });
+      }
+
+      if (
+        url.includes("/api/v1/dashboard/market") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
+        return Response.json({
+          rows: [
+            {
+              sellerId,
+              capability: "deepseek-v4-pro",
+              pricePerTask: "0.0010",
+              status: "idle",
+              updatedAt: "2026-05-13T09:09:46.633Z"
+            }
+          ],
+          topSellers: [
+            {
+              sellerId,
+              capability: "deepseek-v4-pro",
+              status: "idle",
+              completedJobs24h: 1,
+              totalEarned24h: "0.0010",
+              latestJobAt: "2026-05-13T09:09:35.844Z"
+            }
+          ],
+          recentSettlements: [
+            {
+              id: "job-1",
+              jobId: "job-1",
+              sellerId,
+              capability: "deepseek-v4-pro",
+              type: "released",
+              amount: "0.0010",
+              txHash,
+              timestamp: "2026-05-13T09:09:46.376Z"
+            }
+          ]
+        });
+      }
+
+      if (
+        url.includes("/api/v1/dashboard/events") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
+        return Response.json({ items: [] });
+      }
+
+      return Response.json({});
+    }) as typeof fetch;
+
+    await renderMarketplacePage();
+
+    fireEvent.click(screen.getByRole("button", { name: /live/i }));
+
+    const registeredSellerLink = await screen.findByRole("link", {
+      name: `View registered seller ${sellerId} on Kitescan`
+    });
+    const topSellerLink = screen.getByRole("link", {
+      name: `View top seller ${sellerId} on Kitescan`
+    });
+    const settlementLink = screen.getByRole("link", {
+      name: `View released transaction ${txHash} on Kitescan`
+    });
+
+    expect(registeredSellerLink).toHaveAttribute(
+      "href",
+      `https://testnet.kitescan.ai/address/${sellerId}`
+    );
+    expect(topSellerLink).toHaveAttribute(
+      "href",
+      `https://testnet.kitescan.ai/address/${sellerId}`
+    );
+    expect(settlementLink).toHaveAttribute(
+      "href",
+      `https://testnet.kitescan.ai/tx/${txHash}`
+    );
+    expect(settlementLink).toHaveAttribute("target", "_blank");
+    expect(settlementLink).toHaveAttribute("rel", "noreferrer");
+  });
+
+  it("links Live Mainnet seller addresses and settlement transactions to mainnet Kitescan", async () => {
+    const sellerId = "0x2222222222222222222222222222222222222222";
+    const txHash =
+      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (
+        url.includes("/api/v1/dashboard/summary") &&
+        url.includes("mode=live") &&
+        url.includes("network=mainnet")
+      ) {
+        return Response.json({
+          metrics: {
+            activeSellers: 1,
+            openJobs: 0,
+            completedJobs: 1,
+            failedJobs: 0,
+            volume24h: 0.01
+          },
+          activity24h: []
+        });
+      }
+
+      if (
+        url.includes("/api/v1/dashboard/market") &&
+        url.includes("mode=live") &&
+        url.includes("network=mainnet")
+      ) {
+        return Response.json({
+          rows: [
+            {
+              sellerId,
+              capability: "deepseek-v4-pro",
+              pricePerTask: "0.0100",
+              status: "idle",
+              updatedAt: "2026-05-13T09:09:46.633Z"
+            }
+          ],
+          topSellers: [
+            {
+              sellerId,
+              capability: "deepseek-v4-pro",
+              status: "idle",
+              completedJobs24h: 1,
+              totalEarned24h: "0.0100",
+              latestJobAt: "2026-05-13T09:09:35.844Z"
+            }
+          ],
+          recentSettlements: [
+            {
+              id: "job-2",
+              jobId: "job-2",
+              sellerId,
+              capability: "deepseek-v4-pro",
+              type: "refunded",
+              amount: "0.0100",
+              txHash,
+              timestamp: "2026-05-13T09:09:46.376Z"
+            }
+          ]
+        });
+      }
+
+      if (
+        url.includes("/api/v1/dashboard/events") &&
+        url.includes("mode=live") &&
+        url.includes("network=mainnet")
+      ) {
+        return Response.json({ items: [] });
+      }
+
+      return Response.json({
+        rows: [],
+        topSellers: [],
+        recentSettlements: [],
+        items: [],
+        metrics: {
+          activeSellers: 0,
+          openJobs: 0,
+          completedJobs: 0,
+          failedJobs: 0,
+          volume24h: 0
+        },
+        activity24h: []
+      });
+    }) as typeof fetch;
+
+    await renderMarketplacePage();
+
+    fireEvent.click(screen.getByRole("button", { name: /live/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mainnet/i }));
+
+    const registeredSellerLink = await screen.findByRole("link", {
+      name: `View registered seller ${sellerId} on Kitescan`
+    });
+    const settlementLink = screen.getByRole("link", {
+      name: `View refunded transaction ${txHash} on Kitescan`
+    });
+
+    expect(registeredSellerLink).toHaveAttribute(
+      "href",
+      `https://kitescan.ai/address/${sellerId}`
+    );
+    expect(settlementLink).toHaveAttribute(
+      "href",
+      `https://kitescan.ai/tx/${txHash}`
+    );
+  });
+
+  it("does not link Demo mock dashboard values to Kitescan", async () => {
+    await renderMarketplacePage();
+
+    expect(screen.queryByRole("link", { name: /kitescan/i })).not.toBeInTheDocument();
+  });
+
   it("lets Live Dashboard switch from testnet monitoring to mainnet monitoring", async () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
