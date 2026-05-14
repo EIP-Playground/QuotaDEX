@@ -9,8 +9,10 @@ import {
 import {
   readBearerToken,
   verifySellerSessionToken,
-  SellerSessionError
+  SellerSessionError,
+  type SellerSessionClaims
 } from "@/lib/seller-session";
+import type { NetworkProfileId } from "@/lib/network-profiles";
 
 export type SellerCallbackAction = "poll" | "start" | "complete" | "fail";
 
@@ -140,8 +142,9 @@ export async function assertValidSellerCallbackAuth(params: {
   authorizationHeader?: string | null;
   gatewaySecret: string;
   allowLegacySignatureAuth?: boolean;
+  expectedNetworkProfile?: NetworkProfileId;
   now?: Date;
-}): Promise<void> {
+}): Promise<SellerSessionClaims | null> {
   const sessionToken = readBearerToken(params.authorizationHeader ?? null);
 
   if (sessionToken) {
@@ -158,7 +161,16 @@ export async function assertValidSellerCallbackAuth(params: {
         );
       }
 
-      return;
+      if (
+        params.expectedNetworkProfile &&
+        claims.networkProfile !== params.expectedNetworkProfile
+      ) {
+        throw new SellerCallbackSignatureError(
+          "Seller session token does not match network_profile."
+        );
+      }
+
+      return claims;
     } catch (error) {
       if (error instanceof SellerCallbackSignatureError) {
         throw error;
@@ -183,4 +195,5 @@ export async function assertValidSellerCallbackAuth(params: {
   }
 
   await assertValidSellerCallbackSignature(params);
+  return null;
 }

@@ -5,6 +5,7 @@ export type FingerprintInput = {
   buyerId: string;
   capability: string;
   prompt: string;
+  networkProfile?: string;
 };
 
 export function buildFingerprint(
@@ -15,6 +16,7 @@ export function buildFingerprint(
     input.buyerId.trim(),
     input.capability.trim(),
     input.prompt.trim(),
+    input.networkProfile?.trim() ?? "",
     salt.trim()
   ].join(":");
 

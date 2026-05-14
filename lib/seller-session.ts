@@ -1,9 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  parseNetworkProfileId,
+  type NetworkProfileId
+} from "@/lib/network-profiles";
 
 export type SellerSessionClaims = {
   sellerId: string;
   passportAgentId: string;
   passportSubject: string;
+  networkProfile: NetworkProfileId;
   issuedAt: number;
   expiresAt: number;
 };
@@ -51,6 +56,7 @@ export async function createSellerSessionToken(
     sellerId: string;
     passportAgentId: string;
     passportSubject: string;
+    networkProfile?: NetworkProfileId;
   },
   secret: string,
   options: {
@@ -69,6 +75,7 @@ export async function createSellerSessionToken(
     seller_id: input.sellerId,
     passport_agent_id: input.passportAgentId,
     passport_subject: input.passportSubject,
+    network_profile: input.networkProfile ?? "live-mainnet",
     iat: now,
     exp: now + ttlSeconds
   };
@@ -134,6 +141,12 @@ export async function verifySellerSessionToken(
     sellerId: payload.seller_id,
     passportAgentId: payload.passport_agent_id,
     passportSubject: payload.passport_subject,
+    networkProfile: parseNetworkProfileId(
+      typeof payload.network_profile === "string"
+        ? payload.network_profile
+        : undefined,
+      "live-mainnet"
+    ),
     issuedAt: payload.iat,
     expiresAt: payload.exp
   };
@@ -141,6 +154,7 @@ export async function verifySellerSessionToken(
 
 export async function assertValidSellerSession(params: {
   sellerId: string;
+  expectedNetworkProfile?: NetworkProfileId;
   authorizationHeader: string | null;
   secret: string;
 }): Promise<SellerSessionClaims> {
@@ -154,6 +168,15 @@ export async function assertValidSellerSession(params: {
 
   if (claims.sellerId.toLowerCase() !== params.sellerId.toLowerCase()) {
     throw new SellerSessionError("Seller session token does not match seller_id.");
+  }
+
+  if (
+    params.expectedNetworkProfile &&
+    claims.networkProfile !== params.expectedNetworkProfile
+  ) {
+    throw new SellerSessionError(
+      "Seller session token does not match network_profile."
+    );
   }
 
   return claims;

@@ -12,6 +12,10 @@ import {
 } from "@/lib/chain/escrow";
 import { getServerEnv } from "@/lib/env";
 import {
+  getNetworkProfile,
+  NetworkProfileConfigError
+} from "@/lib/network-profiles";
+import {
   assertValidSellerCallbackAuth,
   SellerCallbackSignatureError
 } from "@/lib/seller-callback-auth";
@@ -80,15 +84,21 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  const jobNetworkProfile = jobSnapshot.network_profile ?? "demo-testnet";
   let env: ReturnType<typeof getServerEnv>;
+  let networkProfile: ReturnType<typeof getNetworkProfile>;
 
   try {
     env = getServerEnv();
+    networkProfile = getNetworkProfile(env, jobNetworkProfile);
   } catch (error) {
     return internalServerErrorResponse(
       "Missing Gateway configuration for completion.",
       "GATEWAY_CONFIG_MISSING",
-      { reason: error instanceof Error ? error.message : "Unknown config error." }
+      {
+        code: error instanceof NetworkProfileConfigError ? error.code : undefined,
+        reason: error instanceof Error ? error.message : "Unknown config error."
+      }
     );
   }
 
@@ -99,9 +109,10 @@ export async function POST(request: Request, context: RouteContext) {
       sellerId: completeRequest.seller_id,
       signature: completeRequest.seller_signature,
       signedAt: completeRequest.seller_signed_at,
-      rpcUrl: env.KITE_RPC_URL,
+      rpcUrl: networkProfile.rpcUrl,
       authorizationHeader: request.headers.get("authorization"),
       gatewaySecret: env.GATEWAY_SALT,
+      expectedNetworkProfile: jobNetworkProfile,
       allowLegacySignatureAuth: env.ALLOW_SELLER_SIGNATURE_AUTH === "true"
     });
   } catch (error) {
@@ -136,6 +147,7 @@ export async function POST(request: Request, context: RouteContext) {
     try {
       await logJobEvent({
         jobId: id,
+        networkProfile: jobNetworkProfile,
         type: "RELEASE_SKIPPED",
         message: `Escrow release skipped for mock payment ${jobSnapshot.payment_id}.`
       });
@@ -151,9 +163,10 @@ export async function POST(request: Request, context: RouteContext) {
       const release = await executeEscrowGatewayAction({
         action: "release",
         paymentId: jobSnapshot.payment_id,
-        rpcUrl: env.KITE_RPC_URL,
-        escrowAddress: jobSnapshot.escrow_contract_address ?? env.ESCROW_CONTRACT_ADDRESS,
-        gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+        rpcUrl: networkProfile.rpcUrl,
+        escrowAddress:
+          jobSnapshot.escrow_contract_address ?? networkProfile.escrowContractAddress,
+        gatewayPrivateKey: networkProfile.gatewayPrivateKey
       });
 
       releaseStatus = {
@@ -164,6 +177,7 @@ export async function POST(request: Request, context: RouteContext) {
       try {
         await logJobEvent({
           jobId: id,
+          networkProfile: jobNetworkProfile,
           type: "RELEASED",
           message: `Escrow released payment ${jobSnapshot.payment_id} for job ${id}.`
         });
@@ -179,8 +193,9 @@ export async function POST(request: Request, context: RouteContext) {
         error instanceof Error ? error.message : "Unknown escrow release error.";
       const escrowPaymentState = await readEscrowPaymentState({
         paymentId: jobSnapshot.payment_id,
-        rpcUrl: env.KITE_RPC_URL,
-        escrowAddress: jobSnapshot.escrow_contract_address ?? env.ESCROW_CONTRACT_ADDRESS
+        rpcUrl: networkProfile.rpcUrl,
+        escrowAddress:
+          jobSnapshot.escrow_contract_address ?? networkProfile.escrowContractAddress
       }).catch((stateError) => {
         console.error("Failed to read escrow state after release failure", {
           jobId: id,
@@ -213,8 +228,9 @@ export async function POST(request: Request, context: RouteContext) {
 
         try {
           await logJobEvent({
-            jobId: id,
-            type: "RELEASE_FAILED",
+          jobId: id,
+          networkProfile: jobNetworkProfile,
+          type: "RELEASE_FAILED",
             message: `Escrow release failed for payment ${jobSnapshot.payment_id}: ${releaseErrorMessage}`
           });
         } catch (eventError) {
@@ -274,7 +290,10 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
-    const sellerReleased = await setSellerIdleAfterExecution(completeRequest.seller_id);
+    const sellerReleased = await setSellerIdleAfterExecution(
+      completeRequest.seller_id,
+      jobNetworkProfile
+    );
 
     if (!sellerReleased) {
       console.error("Seller remained non-idle after job completion", {
@@ -293,6 +312,7 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     await logJobEvent({
       jobId: id,
+      networkProfile: jobNetworkProfile,
       type: "DONE",
       message: `Seller ${completeRequest.seller_id} completed job ${id}.`
     });

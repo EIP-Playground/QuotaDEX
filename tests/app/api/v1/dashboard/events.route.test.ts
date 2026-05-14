@@ -6,24 +6,35 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 function createMockSupabase(events: unknown[]) {
+  const filters: Array<{ column: string; values: string[] }> = [];
+
   return {
+    filters,
     from() {
-      return {
-        async select() {
-          return {
+      const query = {
+        select() {
+          return query;
+        },
+        in(column: string, values: string[]) {
+          filters.push({ column, values });
+          return query;
+        },
+        then(resolve: (value: { data: unknown[]; error: null }) => unknown) {
+          return Promise.resolve({
             data: events,
             error: null
-          };
+          }).then(resolve);
         }
       };
+
+      return query;
     }
   };
 }
 
 describe("GET /api/v1/dashboard/events", () => {
   it("maps recent backend events into dashboard feed items", async () => {
-    vi.mocked(createServerSupabaseClient).mockReturnValue(
-      createMockSupabase([
+    const supabase = createMockSupabase([
         {
           id: "event-1",
           job_id: "job-1",
@@ -38,13 +49,18 @@ describe("GET /api/v1/dashboard/events", () => {
           message: "Seller seller-2 is online with capability llama-3.",
           timestamp: "2026-04-19T08:00:00.000Z"
         }
-      ]) as never
-    );
+      ]);
+    vi.mocked(createServerSupabaseClient).mockReturnValue(supabase as never);
 
-    const response = await GET();
+    const response = await GET(
+      new Request("https://quotadex.test/api/v1/dashboard/events?mode=live&network=mainnet")
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(200);
+    expect(supabase.filters).toEqual([
+      { column: "network_profile", values: ["live-mainnet"] }
+    ]);
     expect(payload.items).toEqual([
       {
         id: "event-1",

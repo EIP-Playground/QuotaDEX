@@ -8,6 +8,8 @@ import type {
   JobStatus,
   SellerStatus
 } from "@/lib/dashboard-types";
+import type { DashboardScope } from "@/lib/network-profiles";
+import { getDashboardScope } from "@/lib/network-profiles";
 
 type SellerRow = {
   id: string;
@@ -40,7 +42,7 @@ type EventRow = {
 const SUMMARY_SETTLEMENT: DashboardSummaryResponse["settlement"] = {
   primary: "Kite x402 Escrow",
   fallback: "Mock fallback only",
-  future: "Mainnet env switch"
+  future: "Profile-based Live Mainnet switch"
 };
 
 const SELLER_STATUSES: SellerStatus[] = ["offline", "idle", "reserved", "busy"];
@@ -201,14 +203,26 @@ function eventToneForType(type: string): DashboardEventItem["tone"] {
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
+  return getDashboardSummaryForScope(getDashboardScope({ mode: "demo" }));
+}
+
+export async function getDashboardSummaryForScope(
+  scope: DashboardScope
+): Promise<DashboardSummaryResponse> {
   const supabase = createServerSupabaseClient();
   const [{ data: sellers, error: sellersError }, { data: jobs, error: jobsError }, {
     data: events,
     error: eventsError
   }] = await Promise.all([
-    supabase.from("sellers").select("status"),
-    supabase.from("jobs").select("status, payment_status, amount, created_at"),
-    supabase.from("events").select("job_id, type, timestamp")
+    supabase.from("sellers").select("status").in("network_profile", scope.networkProfiles),
+    supabase
+      .from("jobs")
+      .select("id, status, payment_status, amount, created_at")
+      .in("network_profile", scope.networkProfiles),
+    supabase
+      .from("events")
+      .select("job_id, type, timestamp")
+      .in("network_profile", scope.networkProfiles)
   ]);
 
   if (sellersError) {
@@ -273,6 +287,12 @@ export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
 }
 
 export async function getDashboardMarket(): Promise<DashboardMarketResponse> {
+  return getDashboardMarketForScope(getDashboardScope({ mode: "demo" }));
+}
+
+export async function getDashboardMarketForScope(
+  scope: DashboardScope
+): Promise<DashboardMarketResponse> {
   const supabase = createServerSupabaseClient();
   const settlementSince = new Date(Date.now() - ONE_DAY_MS).toISOString();
   const [{ data: sellers, error: sellersError }, {
@@ -280,11 +300,15 @@ export async function getDashboardMarket(): Promise<DashboardMarketResponse> {
     error: eventsError
   }] =
     await Promise.all([
-      supabase.from("sellers").select("id, capability, price_per_task, status, updated_at"),
+      supabase
+        .from("sellers")
+        .select("id, capability, price_per_task, status, updated_at")
+        .in("network_profile", scope.networkProfiles),
       supabase
         .from("events")
         .select("job_id, type, timestamp")
         .in("type", Array.from(SETTLEMENT_EVENT_TYPES))
+        .in("network_profile", scope.networkProfiles)
         .gte("timestamp", settlementSince)
         .order("timestamp", { ascending: false })
         .limit(200)
@@ -311,6 +335,7 @@ export async function getDashboardMarket(): Promise<DashboardMarketResponse> {
             "id, seller_id, status, payment_status, amount, created_at, release_tx_hash, refund_tx_hash, settlement_tx_hash"
           )
           .in("id", settlementJobIds)
+          .in("network_profile", scope.networkProfiles)
       : { data: [], error: null };
 
   if (jobsError) {
@@ -430,10 +455,17 @@ export async function getDashboardMarket(): Promise<DashboardMarketResponse> {
 }
 
 export async function getDashboardEvents(): Promise<DashboardEventsResponse> {
+  return getDashboardEventsForScope(getDashboardScope({ mode: "demo" }));
+}
+
+export async function getDashboardEventsForScope(
+  scope: DashboardScope
+): Promise<DashboardEventsResponse> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("events")
-    .select("id, job_id, type, message, timestamp");
+    .select("id, job_id, type, message, timestamp")
+    .in("network_profile", scope.networkProfiles);
 
   if (error) {
     throw new Error(`Failed to load dashboard events: ${error.message}`);

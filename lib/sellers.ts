@@ -1,3 +1,8 @@
+import {
+  parseNetworkProfileId,
+  type NetworkProfileId
+} from "@/lib/network-profiles";
+
 type RegisterSellerBody = {
   seller_id: string;
   capability: string;
@@ -5,12 +10,14 @@ type RegisterSellerBody = {
   wallet?: string;
   passport_agent_id?: string;
   passport_payer_addr?: string;
+  network_profile: NetworkProfileId;
 };
 
 type SellerIdentityBody = {
   seller_id: string;
   passport_agent_id?: string;
   passport_payer_addr?: string;
+  network_profile: NetworkProfileId;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -80,7 +87,13 @@ export function parseRegisterSellerBody(input: unknown): RegisterSellerBody {
     price_per_task: normalizedPrice,
     wallet,
     passport_agent_id: passportAgentId,
-    passport_payer_addr: passportPayerAddr
+    passport_payer_addr: passportPayerAddr,
+    network_profile: parseNetworkProfileId(
+      typeof input.network_profile === "string"
+        ? input.network_profile.trim()
+        : undefined,
+      "live-mainnet"
+    )
   };
 }
 
@@ -108,6 +121,12 @@ export function parseSellerIdentityBody(input: unknown): SellerIdentityBody {
   return {
     seller_id: sellerId,
     passport_agent_id: passportAgentId,
-    passport_payer_addr: passportPayerAddr
+    passport_payer_addr: passportPayerAddr,
+    network_profile: parseNetworkProfileId(
+      typeof input.network_profile === "string"
+        ? input.network_profile.trim()
+        : undefined,
+      "live-mainnet"
+    )
   };
 }

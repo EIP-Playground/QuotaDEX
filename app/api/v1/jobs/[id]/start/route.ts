@@ -8,6 +8,10 @@ import {
 } from "@/lib/errors";
 import { getServerEnv } from "@/lib/env";
 import {
+  getNetworkProfile,
+  NetworkProfileConfigError
+} from "@/lib/network-profiles";
+import {
   assertValidSellerCallbackAuth,
   SellerCallbackSignatureError
 } from "@/lib/seller-callback-auth";
@@ -74,15 +78,21 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  const jobNetworkProfile = jobSnapshot.network_profile ?? "demo-testnet";
   let env: ReturnType<typeof getServerEnv>;
+  let networkProfile: ReturnType<typeof getNetworkProfile>;
 
   try {
     env = getServerEnv();
+    networkProfile = getNetworkProfile(env, jobNetworkProfile);
   } catch (error) {
     return internalServerErrorResponse(
       "Missing Gateway configuration for seller callback verification.",
       "GATEWAY_CONFIG_MISSING",
-      { reason: error instanceof Error ? error.message : "Unknown config error." }
+      {
+        code: error instanceof NetworkProfileConfigError ? error.code : undefined,
+        reason: error instanceof Error ? error.message : "Unknown config error."
+      }
     );
   }
 
@@ -93,9 +103,10 @@ export async function POST(request: Request, context: RouteContext) {
       sellerId: startRequest.seller_id,
       signature: startRequest.seller_signature,
       signedAt: startRequest.seller_signed_at,
-      rpcUrl: env.KITE_RPC_URL,
+      rpcUrl: networkProfile.rpcUrl,
       authorizationHeader: request.headers.get("authorization"),
       gatewaySecret: env.GATEWAY_SALT,
+      expectedNetworkProfile: jobNetworkProfile,
       allowLegacySignatureAuth: env.ALLOW_SELLER_SIGNATURE_AUTH === "true"
     });
   } catch (error) {
@@ -137,6 +148,7 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     await logJobEvent({
       jobId: id,
+      networkProfile: jobNetworkProfile,
       type: "RUNNING",
       message: `Seller ${startRequest.seller_id} started job ${id}.`
     });

@@ -14,10 +14,13 @@ describe("POST /api/v1/sellers/jobs", () => {
   );
   const sellerId = sellerAccount.address;
   const limit = vi.fn();
-  const order = vi.fn(() => ({ limit }));
-  const inFilter = vi.fn(() => ({ order }));
-  const eq = vi.fn(() => ({ in: inFilter }));
-  const select = vi.fn(() => ({ eq }));
+  const query = {
+    eq: vi.fn(() => query),
+    in: vi.fn(() => query),
+    order: vi.fn(() => query),
+    limit
+  };
+  const select = vi.fn(() => query);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -121,8 +124,9 @@ describe("POST /api/v1/sellers/jobs", () => {
         }
       ]
     });
-    expect(eq).toHaveBeenCalledWith("seller_id", sellerId);
-    expect(inFilter).toHaveBeenCalledWith("status", ["paid", "running"]);
+    expect(query.eq).toHaveBeenCalledWith("seller_id", sellerId);
+    expect(query.eq).toHaveBeenCalledWith("network_profile", "live-mainnet");
+    expect(query.in).toHaveBeenCalledWith("status", ["paid", "running"]);
   });
 
   it("returns jobs for a seller authorized by a Gateway seller session token", async () => {
@@ -147,7 +151,7 @@ describe("POST /api/v1/sellers/jobs", () => {
 
     expect(response.status).toBe(200);
     expect(body.jobs).toHaveLength(1);
-    expect(eq).toHaveBeenCalledWith("seller_id", sellerId);
+    expect(query.eq).toHaveBeenCalledWith("seller_id", sellerId);
   });
 
   it("rejects legacy seller signatures when they are not explicitly enabled", async () => {

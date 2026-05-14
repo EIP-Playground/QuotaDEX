@@ -48,6 +48,7 @@ export async function POST(request: Request) {
   try {
     await assertValidSellerSession({
       sellerId: seller.seller_id,
+      expectedNetworkProfile: seller.network_profile,
       authorizationHeader: request.headers.get("authorization"),
       secret: env.GATEWAY_SALT
     });
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString()
     })
     .eq("id", seller.seller_id)
+    .eq("network_profile", seller.network_profile)
     .select("id")
     .maybeSingle();
 
@@ -87,6 +89,7 @@ export async function POST(request: Request) {
   }
 
   const { error: eventError } = await supabase.from("events").insert({
+    network_profile: seller.network_profile,
     type: "SELLER_OFFLINE",
     message: `Seller ${seller.seller_id} is offline.`
   });
@@ -100,6 +103,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     status: "offline",
-    seller_id: seller.seller_id
+    seller_id: seller.seller_id,
+    network_profile: seller.network_profile
   });
 }

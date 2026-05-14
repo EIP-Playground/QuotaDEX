@@ -19,11 +19,11 @@ Assumptions:
 - `paymentId` is the bytes32 form of the Gateway `payment_id`
 - `payment_id` is currently the same value as the request `fingerprint`
 - `gateway` is a single EOA with payment registration, release, and refund permission
-- `paymentToken` is the Kite payment token, currently Test USDT on Kite Testnet
+- `paymentToken` is constructor-configured and token-agnostic. The existing testnet deployment uses Test USDT for the one-click Demo route; the Live Mainnet deployment should use Kite Mainnet USDC.e.
 - Standard x402 facilitator settlement transfers tokens to the escrow contract first; Gateway verifies that transfer off-chain and then registers the payment on-chain
 - The escrow contract does not need native KITE for gas. Gateway transactions consume gas from the Gateway EOA configured by `GATEWAY_PRIVATE_KEY`.
 - Normal native KITE transfers to escrow are rejected. `sweepNative` exists only to recover native balance forced into the contract.
-- `recoverExcessPaymentToken` can only move Test USDT above `totalLiabilities`; it cannot withdraw funds backing registered payments.
+- `recoverExcessPaymentToken` can only move the configured payment token above `totalLiabilities`; it cannot withdraw funds backing registered payments.
 
 Test coverage:
 
