@@ -2,9 +2,7 @@ import React from "react";
 import Image from "next/image";
 
 const COLS = [
-  { title: "Product", links: ["Marketplace", "Sellers", "Pricing"] },
-  { title: "Developers", links: ["Gateway API", "Escrow Contract", "SDK", "GitHub"] },
-  { title: "Ecosystem", links: ["Kite AI", "Pieverse", "Agent Passport", "AgentBazaar"] }
+  { title: "Product", links: ["Marketplace", "Sellers", "Pricing"] }
 ];
 
 export function SiteFooter() {

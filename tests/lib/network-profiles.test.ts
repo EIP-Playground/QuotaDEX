@@ -51,8 +51,8 @@ describe("network profiles", () => {
     });
     expect(getDashboardScope({ mode: "live", network: "testnet" })).toMatchObject({
       label: "Live Testnet",
-      currency: "USDC",
-      networkProfiles: ["live-testnet"]
+      currency: "USDT/USDC",
+      networkProfiles: ["demo-testnet", "live-testnet"]
     });
     expect(getDashboardScope({ mode: "live", network: "mainnet" })).toMatchObject({
       label: "Live Mainnet",

@@ -38,7 +38,7 @@ export type DashboardScope = {
   mode: DashboardMode;
   network: LiveNetwork | "demo";
   label: "Demo Testnet" | "Live Testnet" | "Live Mainnet";
-  currency: "USDT" | "USDC";
+  currency: "USDT" | "USDC" | "USDT/USDC";
   networkProfiles: NetworkProfileId[];
 };
 
@@ -223,8 +223,8 @@ export function getDashboardScope(input: {
     mode: "live",
     network: "testnet",
     label: "Live Testnet",
-    currency: "USDC",
-    networkProfiles: ["live-testnet"]
+    currency: "USDT/USDC",
+    networkProfiles: ["demo-testnet", "live-testnet"]
   };
 }
 

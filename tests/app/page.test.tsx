@@ -95,6 +95,8 @@ describe("HomePage", () => {
     });
 
     expect(screen.getByText(/idle ai compute finally has a market/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Developers$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Ecosystem$/i)).not.toBeInTheDocument();
     expect(screen.getByText(/© 2026 quotadex/i)).toBeInTheDocument();
   });
 

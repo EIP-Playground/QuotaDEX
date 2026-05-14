@@ -173,17 +173,17 @@ describe("GET /api/v1/dashboard/market", () => {
         {
           table: "sellers",
           column: "network_profile",
-          values: ["live-testnet"]
+          values: ["demo-testnet", "live-testnet"]
         },
         {
           table: "events",
           column: "network_profile",
-          values: ["live-testnet"]
+          values: ["demo-testnet", "live-testnet"]
         },
         {
           table: "jobs",
           column: "network_profile",
-          values: ["live-testnet"]
+          values: ["demo-testnet", "live-testnet"]
         }
       ])
     );
