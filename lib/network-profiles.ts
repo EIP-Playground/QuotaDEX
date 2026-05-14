@@ -32,6 +32,7 @@ export type PaymentNetworkProfile = {
   escrowContractAddress: string;
   gatewayPrivateKey: string;
   allowMockPayments: string;
+  allowDirectEscrowPayments: string;
 };
 
 export type DashboardScope = {
@@ -126,7 +127,11 @@ export function getNetworkProfile(
         env.ESCROW_CONTRACT_ADDRESS
       ),
       gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY,
-      allowMockPayments: optionalEnv("DEMO_ALLOW_MOCK_PAYMENTS", env.ALLOW_MOCK_PAYMENTS)
+      allowMockPayments: optionalEnv("DEMO_ALLOW_MOCK_PAYMENTS", env.ALLOW_MOCK_PAYMENTS),
+      allowDirectEscrowPayments: optionalEnv(
+        "DEMO_ALLOW_DIRECT_ESCROW_PAYMENTS",
+        env.ALLOW_DIRECT_ESCROW_PAYMENTS
+      )
     };
   }
 
@@ -161,6 +166,10 @@ export function getNetworkProfile(
       allowMockPayments: optionalEnv(
         "LIVE_TESTNET_ALLOW_MOCK_PAYMENTS",
         env.ALLOW_MOCK_PAYMENTS
+      ),
+      allowDirectEscrowPayments: optionalEnv(
+        "LIVE_TESTNET_ALLOW_DIRECT_ESCROW_PAYMENTS",
+        env.ALLOW_DIRECT_ESCROW_PAYMENTS
       )
     };
   }
@@ -191,6 +200,10 @@ export function getNetworkProfile(
     allowMockPayments: optionalEnv(
       "LIVE_MAINNET_ALLOW_MOCK_PAYMENTS",
       env.ALLOW_MOCK_PAYMENTS
+    ),
+    allowDirectEscrowPayments: optionalEnv(
+      "LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS",
+      env.ALLOW_DIRECT_ESCROW_PAYMENTS
     )
   };
 }

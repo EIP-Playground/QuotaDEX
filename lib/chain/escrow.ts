@@ -88,6 +88,9 @@ export class EscrowGatewayActionError extends Error {
       | "INVALID_GATEWAY_KEY"
       | "INVALID_ESCROW_ADDRESS"
       | "GATEWAY_ACTION_RECEIPT_FAILED"
+      | "ESCROW_REGISTRATION_FAILED"
+      | "PAYMENT_ALREADY_REGISTERED"
+      | "SETTLEMENT_ALREADY_REGISTERED"
   ) {
     super(message);
     this.name = "EscrowGatewayActionError";
@@ -454,13 +457,48 @@ export async function registerFacilitatorEscrowPayment(params: {
     transport: http(params.rpcUrl)
   });
 
-  const txHash = await walletClient.writeContract({
-    chain: undefined,
-    address: escrowAddress,
-    abi: escrowAbi,
-    functionName: "registerFacilitatorPayment",
-    args: [paymentId, buyerAddress, sellerAddress, amount, settlementTxHash]
-  });
+  let txHash: Hex;
+
+  try {
+    txHash = await walletClient.writeContract({
+      chain: undefined,
+      address: escrowAddress,
+      abi: escrowAbi,
+      functionName: "registerFacilitatorPayment",
+      args: [paymentId, buyerAddress, sellerAddress, amount, settlementTxHash]
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "Unknown contract error.";
+
+    if (reason.includes("SettlementAlreadyRegistered")) {
+      throw new EscrowGatewayActionError(
+        "Settlement transaction hash has already been registered.",
+        "SETTLEMENT_ALREADY_REGISTERED"
+      );
+    }
+
+    if (reason.includes("PaymentAlreadyExists")) {
+      throw new EscrowGatewayActionError(
+        "Payment has already been registered.",
+        "PAYMENT_ALREADY_REGISTERED"
+      );
+    }
+
+    if (
+      reason.includes("EscrowBalanceInsufficient") ||
+      reason.includes("PaymentNotFunded")
+    ) {
+      throw new EscrowGatewayActionError(
+        "Escrow balance is insufficient for this payment registration.",
+        "ESCROW_REGISTRATION_FAILED"
+      );
+    }
+
+    throw new EscrowGatewayActionError(
+      `Escrow payment registration failed: ${reason}`,
+      "ESCROW_REGISTRATION_FAILED"
+    );
+  }
 
   const receipt = await publicClient.waitForTransactionReceipt({
     hash: txHash

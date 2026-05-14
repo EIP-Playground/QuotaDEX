@@ -211,6 +211,7 @@ PAYMENT_TOKEN_DECIMALS=18
 PAYMENT_CURRENCY=USDT
 ESCROW_CONTRACT_ADDRESS=                # 已部署的 Kite Testnet Test USDT Escrow
 ALLOW_MOCK_PAYMENTS=false
+ALLOW_DIRECT_ESCROW_PAYMENTS=false      # 临时 fallback：验证普通 USDC 转账 tx_hash
 
 # Network profiles
 DEMO_ESCROW_CONTRACT_ADDRESS=           # 可选；默认使用 ESCROW_CONTRACT_ADDRESS
@@ -218,6 +219,7 @@ LIVE_TESTNET_PAYMENT_ASSET_ADDRESS=     # 真实 Agent 测试网 USDC profile，
 LIVE_TESTNET_PAYMENT_CURRENCY=USDC
 LIVE_TESTNET_PAYMENT_TOKEN_DECIMALS=6
 LIVE_TESTNET_ESCROW_CONTRACT_ADDRESS=
+LIVE_TESTNET_ALLOW_DIRECT_ESCROW_PAYMENTS=false
 LIVE_MAINNET_KITE_NETWORK=kite-mainnet
 LIVE_MAINNET_KITE_CHAIN_ID=2366
 LIVE_MAINNET_KITE_RPC_URL=https://rpc.gokite.ai/
@@ -226,6 +228,7 @@ LIVE_MAINNET_PAYMENT_ASSET_ADDRESS=0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e
 LIVE_MAINNET_PAYMENT_CURRENCY=USDC
 LIVE_MAINNET_PAYMENT_TOKEN_DECIMALS=6
 LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS=   # 主网 QuotaDEXEscrow(gateway, USDC.e)
+LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS=false
 
 # Seller bond / kpass wallet proof
 SELLER_BOND_AMOUNT=0.01
@@ -278,7 +281,7 @@ cat skills/quotadex-buyer/SKILL.md
 cat skills/quotadex-seller/SKILL.md
 ```
 
-生产验证默认要求 `X-PAYMENT`。只有本地 demo 才应设置 `ALLOW_MOCK_PAYMENTS=true`。
+生产验证默认要求 `X-PAYMENT`。只有本地 demo 才应设置 `ALLOW_MOCK_PAYMENTS=true`。只有在 Kite discovery allowlist 暂时不可用时，才临时设置 `LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS=true`，让 Gateway 接受金额完全匹配的普通 USDC 转账 tx hash。
 生产 seller callback 默认要求 Gateway seller session token。只有本地 legacy EVM seller worker 才应设置 `ALLOW_SELLER_SIGNATURE_AUTH=true`。
 
 ---

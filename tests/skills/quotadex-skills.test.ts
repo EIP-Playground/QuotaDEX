@@ -29,6 +29,12 @@ describe("QuotaDEX agent skills", () => {
     const seller = readSkill("quotadex-seller");
 
     expect(buyer).toMatch(/kpass agent:session execute/);
+    expect(buyer).toMatch(/temporary direct escrow transfer fallback/i);
+    expect(buyer).toMatch(/kpass wallet send/);
+    expect(buyer).toMatch(/X_PAYMENT_REQUIRED/);
+    expect(buyer).toMatch(/direct-escrow/);
+    expect(buyer).toMatch(/exact quote amount/i);
+    expect(buyer).toMatch(/Do not use `0\.01 USDC`/);
     expect(buyer).toMatch(/\/api\/v1\/buyers\/capabilities/);
     expect(buyer).toMatch(/\/api\/v1\/jobs\/quote/);
     expect(buyer).toMatch(/\/api\/v1\/jobs\/verify/);

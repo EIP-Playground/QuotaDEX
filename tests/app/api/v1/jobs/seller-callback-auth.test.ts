@@ -267,6 +267,46 @@ describe("seller job callbacks", () => {
     expect(setSellerIdleAfterExecution).not.toHaveBeenCalled();
   });
 
+  it("releases escrow for direct-escrow jobs after completion", async () => {
+    vi.mocked(loadJobSnapshot).mockResolvedValue({
+      ...runningJob,
+      payment_mode: "direct-escrow"
+    } as never);
+
+    const response = await completeJob(
+      new Request("https://quotadex.test/api/v1/jobs/job-1/complete", {
+        method: "POST",
+        body: JSON.stringify({
+          ...(await signedBody("complete")),
+          result: { ok: true }
+        })
+      }),
+      { params: Promise.resolve({ id: "job-1" }) }
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.release).toEqual({
+      status: "released",
+      tx_hash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    });
+    expect(executeEscrowGatewayAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "release",
+        paymentId: "payment-1",
+        escrowAddress: "0x9999999999999999999999999999999999999999"
+      })
+    );
+    expect(recordJobPaymentTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: "job-1",
+        paymentStatus: "released",
+        releaseTxHash:
+          "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      })
+    );
+  });
+
   it("skips escrow refund for mock jobs even when tx_hash looks on-chain", async () => {
     vi.mocked(loadJobSnapshot).mockResolvedValue({
       ...runningJob,
@@ -322,5 +362,51 @@ describe("seller job callbacks", () => {
     expect(updateJobStatusForSeller).not.toHaveBeenCalled();
     expect(recordJobPaymentTransition).not.toHaveBeenCalled();
     expect(setSellerIdleAfterExecution).not.toHaveBeenCalled();
+  });
+
+  it("refunds escrow for direct-escrow jobs after failure", async () => {
+    vi.mocked(loadJobSnapshot).mockResolvedValue({
+      ...runningJob,
+      payment_mode: "direct-escrow"
+    } as never);
+    vi.mocked(updateJobStatusForSeller).mockResolvedValue({
+      id: "job-1",
+      seller_id: sellerId,
+      status: "failed",
+      result: { error: "failed" }
+    });
+
+    const response = await failJob(
+      new Request("https://quotadex.test/api/v1/jobs/job-1/fail", {
+        method: "POST",
+        body: JSON.stringify({
+          ...(await signedBody("fail")),
+          error: "failed"
+        })
+      }),
+      { params: Promise.resolve({ id: "job-1" }) }
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.refund).toEqual({
+      status: "refunded",
+      tx_hash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    });
+    expect(executeEscrowGatewayAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "refund",
+        paymentId: "payment-1",
+        escrowAddress: "0x9999999999999999999999999999999999999999"
+      })
+    );
+    expect(recordJobPaymentTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: "job-1",
+        paymentStatus: "refunded",
+        refundTxHash:
+          "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      })
+    );
   });
 });

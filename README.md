@@ -224,6 +224,7 @@ PAYMENT_TOKEN_DECIMALS=18
 PAYMENT_CURRENCY=USDT
 ESCROW_CONTRACT_ADDRESS=                # Existing Kite Testnet Test USDT escrow
 ALLOW_MOCK_PAYMENTS=false
+ALLOW_DIRECT_ESCROW_PAYMENTS=false      # Temporary fallback for plain USDC escrow transfer verification
 
 # Network profiles
 DEMO_ESCROW_CONTRACT_ADDRESS=           # Optional; defaults to ESCROW_CONTRACT_ADDRESS
@@ -231,6 +232,7 @@ LIVE_TESTNET_PAYMENT_ASSET_ADDRESS=     # Future real-agent testnet USDC profile
 LIVE_TESTNET_PAYMENT_CURRENCY=USDC
 LIVE_TESTNET_PAYMENT_TOKEN_DECIMALS=6
 LIVE_TESTNET_ESCROW_CONTRACT_ADDRESS=
+LIVE_TESTNET_ALLOW_DIRECT_ESCROW_PAYMENTS=false
 LIVE_MAINNET_KITE_NETWORK=kite-mainnet
 LIVE_MAINNET_KITE_CHAIN_ID=2366
 LIVE_MAINNET_KITE_RPC_URL=https://rpc.gokite.ai/
@@ -239,6 +241,7 @@ LIVE_MAINNET_PAYMENT_ASSET_ADDRESS=0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e
 LIVE_MAINNET_PAYMENT_CURRENCY=USDC
 LIVE_MAINNET_PAYMENT_TOKEN_DECIMALS=6
 LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS=   # New mainnet QuotaDEXEscrow(gateway, USDC.e)
+LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS=false
 
 # Seller bond / wallet proof for kpass seller sessions
 SELLER_BOND_AMOUNT=0.01                 # Base USDC bond before anti-replay dust
@@ -291,7 +294,7 @@ cat skills/quotadex-buyer/SKILL.md
 cat skills/quotadex-seller/SKILL.md
 ```
 
-Production verification requires `X-PAYMENT` by default. Set `ALLOW_MOCK_PAYMENTS=true` only for local demos.
+Production verification requires `X-PAYMENT` by default. Set `ALLOW_MOCK_PAYMENTS=true` only for local demos. Set `LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS=true` only as a temporary fallback while Kite discovery allowlisting is unavailable; this accepts an exact plain USDC transfer tx hash into the active escrow.
 Production seller callbacks require a Gateway seller session token by default. Set `ALLOW_SELLER_SIGNATURE_AUTH=true` only for local legacy EVM seller workers.
 
 ---
