@@ -88,7 +88,7 @@ describe("MarketplacePage", () => {
     expect(screen.getByText(/active agents/i)).toBeInTheDocument();
     expect(screen.getByText(/24h volume/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: /live market · order book/i })
+      screen.getByRole("heading", { name: /registered seller monitor/i })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: /real-time transactions/i })

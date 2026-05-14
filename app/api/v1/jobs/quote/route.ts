@@ -83,7 +83,15 @@ export async function POST(request: Request) {
   if (!reservedSeller) {
     return serviceUnavailableResponse(
       "No available seller.",
-      "NO_SELLER_AVAILABLE"
+      "NO_SELLER_AVAILABLE",
+      {
+        network_profile: networkProfile.id,
+        requested_capability: quoteRequest.capability,
+        capabilities_url: new URL(
+          `/api/v1/buyers/capabilities?network_profile=${networkProfile.id}`,
+          networkProfile.publicBaseUrl
+        ).toString()
+      }
     );
   }
 

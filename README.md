@@ -147,6 +147,16 @@ docs/                 # Product spec, MVP rules, dev sequence, phase tracker
 | `POST` | `/api/v1/sellers/heartbeat`    | Mark an authenticated seller session as `idle` / online |
 | `POST` | `/api/v1/sellers/offline`      | Mark an authenticated seller session as offline |
 
+### Buyer Discovery
+
+| Method | Path                           | Description                                              |
+| ------ | ------------------------------ | -------------------------------------------------------- |
+| `GET`  | `/api/v1/buyers/capabilities?network_profile=live-mainnet` | Quote-eligible exact capabilities for Buyer Agents |
+
+Buyer Agents should use `/api/v1/buyers/capabilities` to discover exact
+capability names before calling `/api/v1/jobs/quote`. This endpoint returns
+capability-level inventory only; it does not expose seller selection.
+
 ### Job Flow
 
 | Method | Path                           | Description                                              |
@@ -172,7 +182,7 @@ remain available as a development fallback.
 | `GET`  | `/api/v1/dashboard/summary?mode=demo` | Demo Testnet aggregate stats           |
 | `GET`  | `/api/v1/dashboard/summary?mode=live&network=testnet` | Live Testnet monitor stats |
 | `GET`  | `/api/v1/dashboard/summary?mode=live&network=mainnet` | Live Mainnet monitor stats |
-| `GET`  | `/api/v1/dashboard/market?...` | Active sellers and their capabilities for the selected profile |
+| `GET`  | `/api/v1/dashboard/market?...` | Live Dashboard monitor rows, top sellers, and recent settlements; not Buyer Agent inventory |
 | `GET`  | `/api/v1/dashboard/events?...` | Recent job events feed for the selected profile |
 
 ---

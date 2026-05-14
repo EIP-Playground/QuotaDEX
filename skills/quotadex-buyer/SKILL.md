@@ -59,12 +59,17 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
 
 ## Purchase flow
 
-1. Get the buyer payer address:
+1. Discover exact live capabilities. This is the only inventory source a buyer agent may use:
+   ```bash
+   curl -sS "https://quota-dex.vercel.app/api/v1/buyers/capabilities?network_profile=live-mainnet"
+   ```
+   Select an exact `capabilities[].capability` value from the response. If the list is empty, or if the operator's requested capability is not present exactly, stop and ask the operator whether to wait or choose one of the returned exact capabilities. Do not guess variants.
+2. Get the buyer payer address:
    ```bash
    kpass wallet balance --output json
    ```
    Use the returned wallet address as `buyer_id`.
-2. Request a quote from the QuotaDEX Gateway:
+3. Request a quote from the QuotaDEX Gateway with the exact capability selected in step 1:
    ```bash
    curl -sS -X POST "https://quota-dex.vercel.app/api/v1/jobs/quote" \
      -H "content-type: application/json" \
@@ -76,14 +81,14 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      }'
    ```
    Save `fingerprint`, `payment_id`, `seller_id`, and `accepts[0]`. If the Gateway returns `NO_SELLER_AVAILABLE`, stop and ask the operator for a different exact capability or wait for the seller agent to come online; do not infer availability from website pages or market-monitoring APIs.
-3. Validate the quote before paying:
+4. Validate the quote before paying:
    - `accepts[0].resource` must equal `https://quota-dex.vercel.app/api/v1/jobs/verify`.
    - `network_profile` must be `live-mainnet`.
    - `accepts[0].network` must be `kite-mainnet`.
    - `currency` must be `USDC`.
    - `accepts[0].payTo` must match the Gateway response `pay_to`.
    - `accepts[0].asset` must match the Gateway response `payment_asset`.
-4. Pay and verify through Passport. Use the exact quote payload from step 2:
+5. Pay and verify through Passport. Use the exact quote payload from step 3:
    ```bash
    kpass agent:session execute \
      --url "https://quota-dex.vercel.app/api/v1/jobs/verify" \
@@ -102,7 +107,7 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      --output json
    ```
    Expect `job_id`, `payment_mode: "x402-escrow"`, `settlement_tx_hash`, and `escrow_registration_tx_hash`.
-5. Poll the job until it reaches `done` or `failed`:
+6. Poll the job until it reaches `done` or `failed`:
    ```bash
    curl -sS "https://quota-dex.vercel.app/api/v1/jobs/<job_id>"
    ```

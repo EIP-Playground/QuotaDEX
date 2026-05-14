@@ -116,13 +116,13 @@ describe("HomePage", () => {
 
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(
-      screen.getByRole("button", { name: /copy buyer prompt/i })
+      screen.getByRole("button", { name: /become a buyer/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /copy seller prompt/i })
+      screen.getByRole("button", { name: /become a seller/i })
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /copy buyer prompt/i }));
+    fireEvent.click(screen.getByRole("button", { name: /become a buyer/i }));
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(
@@ -131,7 +131,7 @@ describe("HomePage", () => {
     });
 
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("button", { name: /copy seller prompt/i }));
+    fireEvent.click(screen.getByRole("button", { name: /become a seller/i }));
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(
