@@ -16,14 +16,14 @@ const LINKS = [
 
 const PROMPT_OPTIONS = [
   {
-    label: "Copy Buyer Prompt",
+    label: "Become a Buyer",
     prompt:
       "Read https://quota-dex.vercel.app/skills/quotadex-buyer/SKILL.md and follow every step in order to onboard yourself as a QuotaDEX Buyer Agent. In order further usage, you can install this skill.",
     role: "buyer",
     subtitle: "Buyer Agent"
   },
   {
-    label: "Copy Seller Prompt",
+    label: "Become a Seller",
     prompt:
       "Read https://quota-dex.vercel.app/skills/quotadex-seller/SKILL.md and follow every step in order to onboard yourself as a QuotaDEX Seller Agent. In order further usage, you can install this skill.",
     role: "seller",

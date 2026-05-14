@@ -64,11 +64,22 @@ type SellerCandidateRow = {
   last_heartbeat_at: string | null;
 };
 
+type CapabilityCandidateRow = {
+  capability: string;
+  price_per_task: string | number;
+};
+
 export type ReservedSeller = {
   id: string;
   capability: string;
   price_per_task: string;
   reserved_at: string;
+};
+
+export type QuoteEligibleCapability = {
+  capability: string;
+  available_count: number;
+  min_price: string;
 };
 
 export type CreatedPaidJob = {
@@ -135,6 +146,7 @@ export class DuplicateVerificationError extends Error {
 }
 
 const SELLER_CANDIDATE_BATCH_SIZE = 20;
+const CAPABILITY_DISCOVERY_PAGE_SIZE = 1000;
 export const RESERVED_SELLER_TIMEOUT_SECONDS = 30;
 export const SELLER_HEARTBEAT_TTL_SECONDS = 60;
 export const QUOTE_CONTEXT_TTL_SECONDS = 300;
@@ -241,6 +253,91 @@ async function listStaleReservedSellerCandidates(
   }
 
   return (staleReservedCandidates ?? []) as SellerCandidateRow[];
+}
+
+async function listCapabilityCandidates(
+  status: "idle" | "reserved",
+  networkProfile: NetworkProfileId
+): Promise<CapabilityCandidateRow[]> {
+  const supabase = createServerSupabaseClient();
+  let query = supabase
+    .from("sellers")
+    .select("capability, price_per_task, status, network_profile, updated_at, last_heartbeat_at")
+    .eq("network_profile", networkProfile)
+    .eq("status", status)
+    .gte("last_heartbeat_at", getOnlineSellerCutoff());
+
+  if (status === "reserved") {
+    query = query.lte("updated_at", getReservedSellerCutoff());
+  }
+
+  query = query.order("capability", { ascending: true });
+  const rows: CapabilityCandidateRow[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(
+      offset,
+      offset + CAPABILITY_DISCOVERY_PAGE_SIZE - 1
+    );
+
+    if (error) {
+      throw new Error(`Failed to load ${status} capability inventory: ${error.message}`);
+    }
+
+    const page = (data ?? []) as CapabilityCandidateRow[];
+    rows.push(...page);
+
+    if (page.length < CAPABILITY_DISCOVERY_PAGE_SIZE) {
+      return rows;
+    }
+
+    offset += CAPABILITY_DISCOVERY_PAGE_SIZE;
+  }
+}
+
+export async function listQuoteEligibleCapabilities(
+  networkProfile: NetworkProfileId
+): Promise<QuoteEligibleCapability[]> {
+  const [idleCandidates, staleReservedCandidates] = await Promise.all([
+    listCapabilityCandidates("idle", networkProfile),
+    listCapabilityCandidates("reserved", networkProfile)
+  ]);
+  const capabilityByName = new Map<
+    string,
+    { available_count: number; min_price: string; min_price_value: number }
+  >();
+
+  for (const candidate of [...idleCandidates, ...staleReservedCandidates]) {
+    const price = normalizePrice(candidate.price_per_task);
+    const priceValue = Number.parseFloat(price);
+    const existing = capabilityByName.get(candidate.capability);
+
+    if (!existing) {
+      capabilityByName.set(candidate.capability, {
+        available_count: 1,
+        min_price: price,
+        min_price_value: Number.isFinite(priceValue)
+          ? priceValue
+          : Number.POSITIVE_INFINITY
+      });
+      continue;
+    }
+
+    existing.available_count += 1;
+    if (Number.isFinite(priceValue) && priceValue < existing.min_price_value) {
+      existing.min_price = price;
+      existing.min_price_value = priceValue;
+    }
+  }
+
+  return Array.from(capabilityByName.entries())
+    .map(([capability, value]) => ({
+      capability,
+      available_count: value.available_count,
+      min_price: value.min_price
+    }))
+    .sort((left, right) => left.capability.localeCompare(right.capability));
 }
 
 async function tryReserveSellerCandidate(

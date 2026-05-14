@@ -29,6 +29,7 @@ describe("QuotaDEX agent skills", () => {
     const seller = readSkill("quotadex-seller");
 
     expect(buyer).toMatch(/kpass agent:session execute/);
+    expect(buyer).toMatch(/\/api\/v1\/buyers\/capabilities/);
     expect(buyer).toMatch(/\/api\/v1\/jobs\/quote/);
     expect(buyer).toMatch(/\/api\/v1\/jobs\/verify/);
     expect(buyer).toMatch(/"network_profile":"live-mainnet"/);
@@ -37,6 +38,7 @@ describe("QuotaDEX agent skills", () => {
     expect(buyer).toMatch(/do not infer availability from website pages or market-monitoring APIs/i);
     expect(buyer).not.toMatch(/Dashboard/i);
     expect(buyer).not.toMatch(/\/api\/v1\/dashboard/);
+    expect(buyer).not.toMatch(/\/api\/v1\/dashboard\/market/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/register/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/session\/challenge/);
     expect(seller).toMatch(/kpass wallet send/);

@@ -102,4 +102,33 @@ describe("POST /api/v1/jobs/quote", () => {
     });
     expect(reserveSellerForQuote).toHaveBeenCalledWith("gpt-4o", "live-mainnet");
   });
+
+  it("returns buyer discovery metadata without seller rows when no seller matches", async () => {
+    vi.mocked(reserveSellerForQuote).mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/quote", {
+        method: "POST",
+        body: JSON.stringify({
+          buyer_id: "0x6666666666666666666666666666666666666666",
+          capability: "llama-3",
+          prompt: "Summarize this document",
+          network_profile: "live-mainnet"
+        })
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(payload).toMatchObject({
+      code: "NO_SELLER_AVAILABLE",
+      details: {
+        network_profile: "live-mainnet",
+        requested_capability: "llama-3",
+        capabilities_url:
+          "https://gateway.quotadex.test/api/v1/buyers/capabilities?network_profile=live-mainnet"
+      }
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/seller_id|sellerId|rows/);
+  });
 });

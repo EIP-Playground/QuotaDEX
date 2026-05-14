@@ -504,7 +504,7 @@ export function MarketplaceClient({
           <section className="dashGrid">
             <article className="panel">
               <h2>
-                <span><TbBolt /> Live Market · Order Book</span> <span className="hint">updates every {mode === "live" ? "5s" : "1.8s"}</span>
+                <span><TbBolt /> Registered Seller Monitor</span> <span className="hint">updates every {mode === "live" ? "5s" : "1.8s"}</span>
               </h2>
               <table className="obTable">
                 <thead>
