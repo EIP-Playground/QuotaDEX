@@ -1043,6 +1043,14 @@ a {
   font-weight: 500;
 }
 
+.dashControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .dashLive::before {
   content: "";
   width: 8px;
@@ -1942,6 +1950,16 @@ a {
 
   .dash {
     padding: 120px 24px 60px;
+  }
+
+  .dashHead {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .dashControls {
+    justify-content: flex-start;
   }
 
   .statRow {

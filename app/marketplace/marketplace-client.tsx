@@ -68,6 +68,7 @@ type ActivityBucket = {
   settledJobs: number;
 };
 type EventItem = { id: string; type: string; title: string; message: string; timestamp: string; jobId: string | null; tone: string };
+type LiveNetwork = "testnet" | "mainnet";
 
 const CAPS = ["GPT-4-Turbo", "Llama-3 8B", "Mixtral 8x7B", "Claude Haiku", "Gemini Pro", "Llama-3 70B"];
 const AGENTS = ["Agent_X", "Agent_Y", "Agent_Z", "Agent_A7", "Agent_K2", "Agent_M9"];
@@ -234,8 +235,31 @@ function ModeSwitch({ mode, onChange }: { mode: "demo" | "live"; onChange: (m: "
   );
 }
 
+function LiveNetworkSwitch({
+  network,
+  onChange
+}: {
+  network: LiveNetwork;
+  onChange: (network: LiveNetwork) => void;
+}) {
+  return (
+    <div className="modeSwitch networkSwitch" aria-label="Live network">
+      {(["testnet", "mainnet"] as const).map((value) => (
+        <button
+          key={value}
+          className={`modeSwitchBtn${network === value ? " active" : ""}`}
+          onClick={() => onChange(value)}
+        >
+          {value === "testnet" ? "Testnet" : "Mainnet"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function MarketplaceClient() {
   const [mode, setMode] = useState<"demo" | "live">("demo");
+  const [liveNetwork, setLiveNetwork] = useState<LiveNetwork>("testnet");
 
   const [orderBook, setOrderBook] = useState<Seller[]>(() =>
     Array.from({ length: 9 }, (_, i) => makeSeller(i))
@@ -259,6 +283,19 @@ export function MarketplaceClient() {
   );
   const [topSellers, setTopSellers] = useState<TopSellerRow[]>([]);
   const [activity24h, setActivity24h] = useState<ActivityBucket[]>([]);
+  const dashboardCurrency = mode === "demo" ? "USDT" : "USDC";
+  const dashboardBadge =
+    mode === "demo"
+      ? "DEMO · Demo Testnet"
+      : liveNetwork === "mainnet"
+        ? "LIVE · Live Mainnet"
+        : "LIVE · Live Testnet";
+  const dashboardCopy =
+    mode === "demo"
+      ? "Simulated one-click demo data on Kite Testnet"
+      : liveNetwork === "mainnet"
+        ? "Production Agent activity on Kite Mainnet"
+        : "Real Agent test traffic on Kite Testnet";
   const chartAxisLabels = useMemo(() => {
     if (mode !== "live" || activity24h.length === 0) {
       return ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "24:00"];
@@ -310,9 +347,9 @@ export function MarketplaceClient() {
     async function fetchAll() {
       try {
         const [summaryRes, marketRes, eventsRes] = await Promise.all([
-          fetch("/api/v1/dashboard/summary"),
-          fetch("/api/v1/dashboard/market"),
-          fetch("/api/v1/dashboard/events")
+          fetch(`/api/v1/dashboard/summary?mode=live&network=${liveNetwork}`),
+          fetch(`/api/v1/dashboard/market?mode=live&network=${liveNetwork}`),
+          fetch(`/api/v1/dashboard/events?mode=live&network=${liveNetwork}`)
         ]);
         const summary = await summaryRes.json();
         const market = await marketRes.json();
@@ -372,7 +409,7 @@ export function MarketplaceClient() {
     fetchAll();
     const t = window.setInterval(fetchAll, 5000);
     return () => window.clearInterval(t);
-  }, [mode]);
+  }, [mode, liveNetwork]);
 
   return (
     <>
@@ -386,12 +423,15 @@ export function MarketplaceClient() {
               <h1>
                 Global <span>Compute</span> Monitor
               </h1>
-              <p>Real-time A2A marketplace activity across the Kite network</p>
+              <p>{dashboardCopy}</p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div className="dashControls">
               <ModeSwitch mode={mode} onChange={setMode} />
+              {mode === "live" ? (
+                <LiveNetworkSwitch network={liveNetwork} onChange={setLiveNetwork} />
+              ) : null}
               <div className="dashLive">
-                {mode === "live" ? "LIVE · Kite Testnet" : "DEMO · Simulated"}
+                {dashboardBadge}
               </div>
             </div>
           </header>
@@ -407,7 +447,7 @@ export function MarketplaceClient() {
               <div className="statLabel"><TbCoin /> Avg Price / 1k tokens</div>
               <div className="statVal">
                 {stats.price.toFixed(4)}
-                <span className="small">USDT</span>
+                <span className="small">{dashboardCurrency}</span>
               </div>
               <div className="statDelta down">{mode === "live" ? "registered seller mean" : "−2.4% vs yesterday"}</div>
               <Sparkline data={[3, 3.2, 2.9, 2.7, 2.5, 2.6, 2.4, 2.5, 2.3, 2.2, 2.1, 2.0]} />
@@ -415,7 +455,7 @@ export function MarketplaceClient() {
             <article className="stat">
               <div className="statLabel"><TbChartBar /> 24h Volume</div>
               <div className="statVal">
-                {formatVolume(stats.vol, mode)}<span className="small">USDT</span>
+                {formatVolume(stats.vol, mode)}<span className="small">{dashboardCurrency}</span>
               </div>
               <div className="statDelta">{mode === "live" ? "released job amount" : "+18.3% vs yesterday"}</div>
               <Sparkline data={[50, 55, 60, 65, 62, 70, 75, 80, 85, 90, 92, 95]} />
@@ -438,7 +478,7 @@ export function MarketplaceClient() {
                   <tr>
                     <th>Seller</th>
                     <th>Capability</th>
-                    <th>Price (USDT)</th>
+                    <th>Price ({dashboardCurrency})</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -491,7 +531,7 @@ export function MarketplaceClient() {
                           </>
                         ) : (
                           <>
-                            <b>{t.from}</b> paid <span className="amt">{t.amt} USDT</span> to{" "}
+                            <b>{t.from}</b> paid <span className="amt">{t.amt} {dashboardCurrency}</span> to{" "}
                             <b>{t.to}</b> for {t.cap} task
                           </>
                         )}
@@ -561,7 +601,7 @@ export function MarketplaceClient() {
                             {seller.capability} · {seller.completedJobs24h} jobs settled
                           </div>
                         </div>
-                        <div className="agentScore">{seller.totalEarned24h} USDT</div>
+                        <div className="agentScore">{seller.totalEarned24h} {dashboardCurrency}</div>
                       </div>
                     ))
                   )
@@ -572,7 +612,7 @@ export function MarketplaceClient() {
                         <div className="agentId">{a}</div>
                         <div className="agentCap">GPT-4-Turbo · Llama-3 · {3 + i} capabilities</div>
                       </div>
-                      <div className="agentScore">{(12.4 - i * 1.8).toFixed(1)}k USDT</div>
+                      <div className="agentScore">{(12.4 - i * 1.8).toFixed(1)}k {dashboardCurrency}</div>
                     </div>
                   ))
                 )}

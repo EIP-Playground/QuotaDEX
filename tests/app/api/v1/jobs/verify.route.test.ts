@@ -76,13 +76,15 @@ describe("POST /api/v1/jobs/verify", () => {
   const payload = {
     buyer_id: buyerId,
     capability: "gpt-4o",
-    prompt: "Summarize this document"
+    prompt: "Summarize this document",
+    network_profile: "demo-testnet" as const
   };
   const fingerprint = buildFingerprint(
     {
       buyerId: payload.buyer_id,
       capability: payload.capability,
-      prompt: payload.prompt
+      prompt: payload.prompt,
+      networkProfile: payload.network_profile
     },
     "salt"
   );
@@ -99,7 +101,9 @@ describe("POST /api/v1/jobs/verify", () => {
     payment_mode: "x402-escrow",
     payment_asset: "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63",
     pay_to: "0x4444444444444444444444444444444444444444",
+    network_profile: "demo-testnet",
     network: "kite-testnet",
+    chain_id: "2368",
     created_at: "2026-05-12T10:00:00.000Z",
     expires_at: "2026-05-12T10:05:00.000Z"
   };
@@ -119,6 +123,8 @@ describe("POST /api/v1/jobs/verify", () => {
     process.env.PAYMENT_CURRENCY = "USDT";
     process.env.ESCROW_CONTRACT_ADDRESS =
       "0x4444444444444444444444444444444444444444";
+    process.env.LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS =
+      "0x9999999999999999999999999999999999999999";
     process.env.GATEWAY_PRIVATE_KEY =
       "0x1111111111111111111111111111111111111111111111111111111111111111";
     process.env.ALLOW_MOCK_PAYMENTS = "false";
@@ -305,6 +311,74 @@ describe("POST /api/v1/jobs/verify", () => {
     );
   });
 
+  it("uses the quote network profile for Live Mainnet settlement and escrow registration", async () => {
+    const mainnetQuoteContext = {
+      ...quoteContext,
+      amount_atomic: "5000",
+      currency: "USDC",
+      payment_asset: "0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e",
+      pay_to: "0x9999999999999999999999999999999999999999",
+      network_profile: "live-mainnet",
+      network: "kite-mainnet",
+      chain_id: "2366"
+    };
+    vi.mocked(loadQuoteContext).mockResolvedValue(mainnetQuoteContext as never);
+    const xPayment = Buffer.from(
+      JSON.stringify({
+        authorization: {
+          from: buyerId,
+          to: mainnetQuoteContext.pay_to,
+          value: mainnetQuoteContext.amount_atomic
+        },
+        signature: "0xsig",
+        network: "kite-mainnet"
+      })
+    ).toString("base64");
+    const settlementTxHash =
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    vi.mocked(verifyFacilitatorPayment).mockResolvedValue({ valid: true });
+    vi.mocked(settleFacilitatorPayment).mockResolvedValue({
+      success: true,
+      txHash: settlementTxHash
+    });
+    vi.mocked(verifyFacilitatorSettlementReceipt).mockResolvedValue(undefined);
+    vi.mocked(registerFacilitatorEscrowPayment).mockResolvedValue({
+      txHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    });
+
+    const response = await POST(
+      new Request("https://quotadex.test/api/v1/jobs/verify", {
+        method: "POST",
+        headers: {
+          "x-payment": xPayment
+        },
+        body: JSON.stringify({
+          fingerprint,
+          tx_hash: null,
+          payload
+        })
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(verifyFacilitatorSettlementReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txHash: settlementTxHash,
+        tokenAddress: mainnetQuoteContext.payment_asset,
+        escrowAddress: mainnetQuoteContext.pay_to,
+        rpcUrl: "https://rpc.gokite.ai/"
+      })
+    );
+    expect(registerFacilitatorEscrowPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settlementTxHash,
+        rpcUrl: "https://rpc.gokite.ai/",
+        escrowAddress: mainnetQuoteContext.pay_to
+      })
+    );
+  });
+
   it("does not call the facilitator when the seller reservation is stale", async () => {
     const xPayment = Buffer.from(
       JSON.stringify({
@@ -379,7 +453,10 @@ describe("POST /api/v1/jobs/verify", () => {
     expect(response.status).toBe(400);
     expect(body.code).toBe("FACILITATOR_RESPONSE_INVALID");
     expect(deleteJob).toHaveBeenCalledWith("job-1");
-    expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(sellerId);
+    expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(
+      sellerId,
+      "demo-testnet"
+    );
     expect(deleteQuoteContext).toHaveBeenCalledWith(fingerprint);
     expect(finalizeSettlingJobPayment).not.toHaveBeenCalled();
     expect(recoverExcessEscrowPaymentToken).not.toHaveBeenCalled();
@@ -435,7 +512,10 @@ describe("POST /api/v1/jobs/verify", () => {
       })
     );
     expect(deleteJob).toHaveBeenCalledWith("job-1");
-    expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(sellerId);
+    expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(
+      sellerId,
+      "demo-testnet"
+    );
     expect(deleteQuoteContext).toHaveBeenCalledWith(fingerprint);
     expect(finalizeSettlingJobPayment).not.toHaveBeenCalled();
   });
@@ -494,6 +574,10 @@ describe("POST /api/v1/jobs/verify", () => {
         paymentId: fingerprint,
         escrowAddress: quoteContext.pay_to
       })
+    );
+    expect(setSellerIdleAfterExecution).toHaveBeenCalledWith(
+      sellerId,
+      "demo-testnet"
     );
   });
 });

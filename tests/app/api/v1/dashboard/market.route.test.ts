@@ -9,13 +9,17 @@ vi.mock("@/lib/supabase", () => ({
 type MockTable = "sellers" | "jobs" | "events";
 
 function createMockSupabase(rows: Record<MockTable, unknown[]>) {
+  const filters: Array<{ table: MockTable; column: string; values: string[] }> = [];
+
   return {
+    filters,
     from(table: MockTable) {
       const query = {
         select() {
           return query;
         },
-        in() {
+        in(column: string, values: string[]) {
+          filters.push({ table, column, values });
           return query;
         },
         gte() {
@@ -54,8 +58,7 @@ describe("GET /api/v1/dashboard/market", () => {
   });
 
   it("returns live market rows plus seller earnings and recent settlements from jobs", async () => {
-    vi.mocked(createServerSupabaseClient).mockReturnValue(
-      createMockSupabase({
+    const supabase = createMockSupabase({
         sellers: [
           {
             id: "seller-older",
@@ -156,13 +159,34 @@ describe("GET /api/v1/dashboard/market", () => {
             timestamp: "2026-05-11T06:10:00.000Z"
           }
         ]
-      }) as never
-    );
+      });
+    vi.mocked(createServerSupabaseClient).mockReturnValue(supabase as never);
 
-    const response = await GET();
+    const response = await GET(
+      new Request("https://quotadex.test/api/v1/dashboard/market?mode=live&network=testnet")
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(200);
+    expect(supabase.filters).toEqual(
+      expect.arrayContaining([
+        {
+          table: "sellers",
+          column: "network_profile",
+          values: ["live-testnet"]
+        },
+        {
+          table: "events",
+          column: "network_profile",
+          values: ["live-testnet"]
+        },
+        {
+          table: "jobs",
+          column: "network_profile",
+          values: ["live-testnet"]
+        }
+      ])
+    );
     expect(payload.rows).toEqual([
       {
         sellerId: "seller-newer",

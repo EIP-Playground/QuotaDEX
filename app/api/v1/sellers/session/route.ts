@@ -7,9 +7,19 @@ import {
 } from "@/lib/errors";
 import { getServerEnv } from "@/lib/env";
 import {
+  getNetworkProfile,
+  NetworkProfileConfigError,
+  parseNetworkProfileId,
+  type NetworkProfileId
+} from "@/lib/network-profiles";
+import {
   PassportAuthError,
   verifyPassportBearerToken
 } from "@/lib/passport-auth";
+import {
+  SellerBondReceiptError,
+  verifySellerBondTransferReceipt
+} from "@/lib/seller-bond";
 import { createSellerSessionToken, readBearerToken } from "@/lib/seller-session";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { getAddress, isAddress } from "viem";
@@ -17,6 +27,9 @@ import { getAddress, isAddress } from "viem";
 type SellerSessionRequest = {
   seller_id: string;
   passport_agent_id: string;
+  network_profile: NetworkProfileId;
+  challenge_id?: string;
+  tx_hash?: string;
 };
 
 type SellerSessionRow = {
@@ -27,9 +40,31 @@ type SellerSessionRow = {
   approval_status: string | null;
 };
 
+type SellerAuthChallengeRow = {
+  id: string;
+  seller_id: string;
+  passport_agent_id: string;
+  proof_receiver_address: string;
+  proof_token_address: string;
+  proof_token_symbol: string;
+  amount_atomic: string;
+  amount_display: string;
+  network_profile: NetworkProfileId;
+  status: string;
+  expires_at: string;
+};
+
 type ExistingValueFilterQuery = {
   eq(column: string, value: string): ExistingValueFilterQuery;
   is(column: string, value: null): ExistingValueFilterQuery;
+};
+
+type VerifiedSellerIdentity = {
+  agentId: string;
+  payerAddress: string;
+  subject: string;
+  email: string | null;
+  authMethod: "passport_rs256" | "seller_bond";
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -51,9 +86,26 @@ function parseSellerSessionRequest(input: unknown): SellerSessionRequest {
     throw new Error("Request body must be a JSON object.");
   }
 
+  const challengeId =
+    typeof input.challenge_id === "string" && input.challenge_id.trim() !== ""
+      ? input.challenge_id.trim()
+      : undefined;
+  const txHash =
+    typeof input.tx_hash === "string" && input.tx_hash.trim() !== ""
+      ? input.tx_hash.trim()
+      : undefined;
+
   return {
     seller_id: readRequiredString(input, "seller_id"),
-    passport_agent_id: readRequiredString(input, "passport_agent_id")
+    passport_agent_id: readRequiredString(input, "passport_agent_id"),
+    network_profile: parseNetworkProfileId(
+      typeof input.network_profile === "string"
+        ? input.network_profile.trim()
+        : undefined,
+      "live-mainnet"
+    ),
+    challenge_id: challengeId,
+    tx_hash: txHash
   };
 }
 
@@ -79,6 +131,10 @@ function requirePassportSellerIdentity(
     agentId: identity.agentId,
     payerAddress: identity.payerAddress
   };
+}
+
+function sellerBondSubject(sellerId: string): string {
+  return `wallet-proof:${sellerId.toLowerCase()}`;
 }
 
 function applyExistingValueFilter<Query extends ExistingValueFilterQuery>(
@@ -125,71 +181,221 @@ export async function POST(request: Request) {
   }
 
   let env: ReturnType<typeof getServerEnv>;
+  let networkProfile: ReturnType<typeof getNetworkProfile>;
 
   try {
     env = getServerEnv();
+    networkProfile = getNetworkProfile(env, sessionRequest.network_profile);
   } catch (error) {
     return internalServerErrorResponse(
       "Missing Gateway configuration for seller session.",
       "GATEWAY_CONFIG_MISSING",
-      { reason: error instanceof Error ? error.message : "Unknown config error." }
-    );
-  }
-
-  const passportToken = readBearerToken(request.headers.get("authorization"));
-
-  if (!passportToken) {
-    return forbiddenResponse(
-      "Passport bearer token is required to create a seller session.",
-      "PASSPORT_AUTH_REQUIRED"
-    );
-  }
-
-  let identity: Awaited<ReturnType<typeof verifyPassportBearerToken>>;
-
-  try {
-    identity = await verifyPassportBearerToken(passportToken, {
-      issuer: env.KITE_PASSPORT_ISSUER,
-      jwksUrl: env.KITE_PASSPORT_JWKS_URL
-    });
-    requirePassportSellerIdentity(identity);
-  } catch (error) {
-    if (error instanceof PassportAuthError) {
-      return forbiddenResponse(error.message, error.code);
-    }
-
-    return internalServerErrorResponse(
-      "Failed to verify Passport bearer token.",
-      "PASSPORT_VERIFY_FAILED",
-      { reason: error instanceof Error ? error.message : "Unknown Passport error." }
-    );
-  }
-
-  const passportSeller = requirePassportSellerIdentity(identity);
-
-  if (
-    passportSeller.payerAddress.toLowerCase() !== normalizedSellerId.toLowerCase()
-  ) {
-    return forbiddenResponse(
-      "Passport payer address does not match seller_id.",
-      "SELLER_PASSPORT_MISMATCH"
-    );
-  }
-
-  if (passportSeller.agentId !== sessionRequest.passport_agent_id) {
-    return forbiddenResponse(
-      "Passport agent id does not match the requested seller agent.",
-      "SELLER_PASSPORT_MISMATCH"
+      {
+        code: error instanceof NetworkProfileConfigError ? error.code : undefined,
+        reason: error instanceof Error ? error.message : "Unknown config error."
+      }
     );
   }
 
   const supabase = createServerSupabaseClient();
+  const passportToken = readBearerToken(request.headers.get("authorization"));
+  const hasSellerBondProof = Boolean(
+    sessionRequest.challenge_id && sessionRequest.tx_hash
+  );
+  let verifiedSeller: VerifiedSellerIdentity;
+
+  if (hasSellerBondProof) {
+    const { data: challenge, error: challengeReadError } = await supabase
+      .from("seller_auth_challenges")
+      .select(
+        "id, seller_id, passport_agent_id, proof_receiver_address, proof_token_address, proof_token_symbol, amount_atomic, amount_display, network_profile, status, expires_at"
+      )
+      .eq("id", sessionRequest.challenge_id as string)
+      .eq("network_profile", sessionRequest.network_profile)
+      .maybeSingle();
+
+    if (challengeReadError) {
+      return internalServerErrorResponse(
+        "Failed to load seller bond challenge.",
+        "SELLER_BOND_CHALLENGE_READ_FAILED",
+        { reason: challengeReadError.message }
+      );
+    }
+
+    if (!challenge) {
+      return notFoundResponse(
+        "Seller bond challenge not found.",
+        "SELLER_BOND_CHALLENGE_NOT_FOUND"
+      );
+    }
+
+    const challengeRow = challenge as SellerAuthChallengeRow;
+
+    if (challengeRow.status !== "pending") {
+      return forbiddenResponse(
+        "Seller bond challenge is not pending.",
+        "SELLER_BOND_CHALLENGE_INVALID"
+      );
+    }
+
+    if (new Date(challengeRow.expires_at).getTime() <= Date.now()) {
+      return forbiddenResponse(
+        "Seller bond challenge has expired.",
+        "SELLER_BOND_CHALLENGE_EXPIRED"
+      );
+    }
+
+    if (challengeRow.seller_id.toLowerCase() !== normalizedSellerId.toLowerCase()) {
+      return forbiddenResponse(
+        "Seller bond challenge does not match seller_id.",
+        "SELLER_BOND_CHALLENGE_MISMATCH"
+      );
+    }
+
+    if (challengeRow.network_profile !== sessionRequest.network_profile) {
+      return forbiddenResponse(
+        "Seller bond challenge does not match network_profile.",
+        "SELLER_BOND_CHALLENGE_MISMATCH"
+      );
+    }
+
+    if (challengeRow.passport_agent_id !== sessionRequest.passport_agent_id) {
+      return forbiddenResponse(
+        "Seller bond challenge does not match the requested seller agent.",
+        "SELLER_BOND_CHALLENGE_MISMATCH"
+      );
+    }
+
+    try {
+      await verifySellerBondTransferReceipt({
+        txHash: sessionRequest.tx_hash as string,
+        sellerId: normalizedSellerId,
+        receiverAddress: challengeRow.proof_receiver_address,
+        tokenAddress: challengeRow.proof_token_address,
+        amountAtomic: challengeRow.amount_atomic,
+        rpcUrl: networkProfile.rpcUrl
+      });
+    } catch (error) {
+      if (error instanceof SellerBondReceiptError) {
+        return forbiddenResponse(error.message, error.code);
+      }
+
+      return internalServerErrorResponse(
+        "Failed to verify seller bond transfer.",
+        "SELLER_BOND_VERIFY_FAILED",
+        { reason: error instanceof Error ? error.message : "Unknown bond error." }
+      );
+    }
+
+    const verifiedAt = new Date().toISOString();
+    const { data: verifiedChallenge, error: challengeUpdateError } = await supabase
+      .from("seller_auth_challenges")
+      .update({
+        status: "verified",
+        tx_hash: sessionRequest.tx_hash,
+        verified_at: verifiedAt,
+        updated_at: verifiedAt
+      })
+      .eq("id", challengeRow.id)
+      .eq("network_profile", sessionRequest.network_profile)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+
+    if (challengeUpdateError) {
+      if ("code" in challengeUpdateError && challengeUpdateError.code === "23505") {
+        return forbiddenResponse(
+          "Seller bond transaction was already used.",
+          "SELLER_BOND_TX_REUSED"
+        );
+      }
+
+      return internalServerErrorResponse(
+        "Failed to mark seller bond challenge verified.",
+        "SELLER_BOND_CHALLENGE_UPDATE_FAILED",
+        { reason: challengeUpdateError.message }
+      );
+    }
+
+    if (!verifiedChallenge) {
+      return forbiddenResponse(
+        "Seller bond challenge changed before the session could be created.",
+        "SELLER_BOND_CHALLENGE_STALE"
+      );
+    }
+
+    verifiedSeller = {
+      agentId: sessionRequest.passport_agent_id,
+      payerAddress: normalizedSellerId,
+      subject: sellerBondSubject(normalizedSellerId),
+      email: null,
+      authMethod: "seller_bond"
+    };
+  } else {
+    if (!passportToken) {
+      return forbiddenResponse(
+        "Passport bearer token or seller bond proof is required to create a seller session.",
+        "PASSPORT_AUTH_REQUIRED"
+      );
+    }
+
+    let identity: Awaited<ReturnType<typeof verifyPassportBearerToken>>;
+
+    try {
+      identity = await verifyPassportBearerToken(passportToken, {
+        issuer: env.KITE_PASSPORT_ISSUER,
+        jwksUrl: env.KITE_PASSPORT_JWKS_URL
+      });
+      requirePassportSellerIdentity(identity);
+    } catch (error) {
+      if (error instanceof PassportAuthError) {
+        return forbiddenResponse(error.message, error.code);
+      }
+
+      return internalServerErrorResponse(
+        "Failed to verify Passport bearer token.",
+        "PASSPORT_VERIFY_FAILED",
+        {
+          reason:
+            error instanceof Error ? error.message : "Unknown Passport error."
+        }
+      );
+    }
+
+    const passportSeller = requirePassportSellerIdentity(identity);
+
+    if (
+      passportSeller.payerAddress.toLowerCase() !== normalizedSellerId.toLowerCase()
+    ) {
+      return forbiddenResponse(
+        "Passport payer address does not match seller_id.",
+        "SELLER_PASSPORT_MISMATCH"
+      );
+    }
+
+    if (passportSeller.agentId !== sessionRequest.passport_agent_id) {
+      return forbiddenResponse(
+        "Passport agent id does not match the requested seller agent.",
+        "SELLER_PASSPORT_MISMATCH"
+      );
+    }
+
+    verifiedSeller = {
+      agentId: passportSeller.agentId,
+      payerAddress: passportSeller.payerAddress,
+      subject: identity.subject,
+      email: identity.email,
+      authMethod: "passport_rs256"
+    };
+  }
+
   const { data: seller, error: readError } = await supabase
     .from("sellers")
     .select(
       "id, passport_agent_id, passport_payer_addr, passport_subject, approval_status"
     )
     .eq("id", sessionRequest.seller_id)
+    .eq("network_profile", sessionRequest.network_profile)
     .maybeSingle();
 
   if (readError) {
@@ -215,7 +421,7 @@ export async function POST(request: Request) {
 
   if (
     sellerRow.passport_agent_id &&
-    sellerRow.passport_agent_id !== passportSeller.agentId
+    sellerRow.passport_agent_id !== verifiedSeller.agentId
   ) {
     return forbiddenResponse(
       "Passport agent id does not match the registered seller.",
@@ -225,7 +431,7 @@ export async function POST(request: Request) {
 
   if (
     sellerRow.passport_payer_addr &&
-    sellerRow.passport_payer_addr.toLowerCase() !== passportSeller.payerAddress.toLowerCase()
+    sellerRow.passport_payer_addr.toLowerCase() !== verifiedSeller.payerAddress.toLowerCase()
   ) {
     return forbiddenResponse(
       "Passport payer address does not match seller_id.",
@@ -235,7 +441,7 @@ export async function POST(request: Request) {
 
   if (
     sellerRow.passport_subject &&
-    sellerRow.passport_subject !== identity.subject
+    sellerRow.passport_subject !== verifiedSeller.subject
   ) {
     return forbiddenResponse(
       "Passport user does not own this seller registration.",
@@ -246,13 +452,14 @@ export async function POST(request: Request) {
   let bindQuery = supabase
     .from("sellers")
     .update({
-      passport_agent_id: passportSeller.agentId,
-      passport_payer_addr: passportSeller.payerAddress,
-      passport_subject: identity.subject,
-      passport_email: identity.email,
+      passport_agent_id: verifiedSeller.agentId,
+      passport_payer_addr: verifiedSeller.payerAddress,
+      passport_subject: verifiedSeller.subject,
+      passport_email: verifiedSeller.email,
       updated_at: new Date().toISOString()
     })
     .eq("id", sessionRequest.seller_id);
+  bindQuery = bindQuery.eq("network_profile", sessionRequest.network_profile);
 
   bindQuery = applyExistingValueFilter(
     bindQuery,
@@ -296,8 +503,9 @@ export async function POST(request: Request) {
   const sellerSessionToken = await createSellerSessionToken(
     {
       sellerId: sessionRequest.seller_id,
-      passportAgentId: passportSeller.agentId,
-      passportSubject: identity.subject
+      passportAgentId: verifiedSeller.agentId,
+      passportSubject: verifiedSeller.subject,
+      networkProfile: sessionRequest.network_profile
     },
     env.GATEWAY_SALT,
     {
@@ -309,6 +517,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     status: "ok",
     seller_id: sessionRequest.seller_id,
+    network_profile: sessionRequest.network_profile,
+    auth_method: verifiedSeller.authMethod,
     token_type: "Bearer",
     seller_session_token: sellerSessionToken,
     expires_in_seconds: normalizedTtlSeconds,

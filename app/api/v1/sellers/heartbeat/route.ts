@@ -50,6 +50,7 @@ export async function POST(request: Request) {
   try {
     sessionClaims = await assertValidSellerSession({
       sellerId: seller.seller_id,
+      expectedNetworkProfile: seller.network_profile,
       authorizationHeader: request.headers.get("authorization"),
       secret: env.GATEWAY_SALT
     });
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
     .from("sellers")
     .select("id, status, updated_at")
     .eq("id", seller.seller_id)
+    .eq("network_profile", seller.network_profile)
     .maybeSingle();
 
   if (readError) {
@@ -110,6 +112,7 @@ export async function POST(request: Request) {
     .from("sellers")
     .update(heartbeatUpdate)
     .eq("id", seller.seller_id)
+    .eq("network_profile", seller.network_profile)
     .eq("status", existingSeller.status)
     .eq("updated_at", existingSeller.updated_at)
     .select("id, status")
@@ -134,6 +137,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     status: "ok",
     seller_id: seller.seller_id,
+    network_profile: seller.network_profile,
     seller_status: nextStatus
   });
 }

@@ -18,23 +18,17 @@ describe("seller lifecycle routes", () => {
   const sellerUpdateSelect = vi.fn(() => ({
     maybeSingle: sellerUpdateMaybeSingle
   }));
-  const sellerUpdateIs = vi.fn(() => ({
-    select: sellerUpdateSelect
-  }));
-  const sellerUpdateEqUpdatedAt = vi.fn(() => ({
-    select: sellerUpdateSelect
-  }));
-  const sellerUpdateEqStatus = vi.fn(() => ({
-    eq: sellerUpdateEqUpdatedAt
-  }));
-  const sellerUpdateEq = vi.fn((): unknown => ({
-    is: sellerUpdateIs,
-    eq: sellerUpdateEqStatus,
+  const sellerUpdateQuery = {
+    is: vi.fn(() => sellerUpdateQuery),
+    eq: vi.fn(() => sellerUpdateQuery),
     select: sellerUpdateSelect,
     error: null
-  }));
-  const sellerSelectEq = vi.fn(() => ({ maybeSingle: sellerReadMaybeSingle }));
-  const sellerSelect = vi.fn(() => ({ eq: sellerSelectEq }));
+  };
+  const sellerSelectQuery = {
+    eq: vi.fn(() => sellerSelectQuery),
+    maybeSingle: sellerReadMaybeSingle
+  };
+  const sellerSelect = vi.fn(() => sellerSelectQuery);
   const from = vi.fn((table: string) => {
     if (table === "events") {
       return { insert: eventInsert };
@@ -71,7 +65,7 @@ describe("seller lifecycle routes", () => {
       },
       error: null
     });
-    sellerUpdate.mockReturnValue({ eq: sellerUpdateEq });
+    sellerUpdate.mockReturnValue(sellerUpdateQuery);
 
     vi.mocked(createServerSupabaseClient).mockReturnValue({ from } as never);
   });
@@ -169,9 +163,10 @@ describe("seller lifecycle routes", () => {
         last_heartbeat_at: expect.any(String)
       })
     );
-    expect(sellerUpdateEq).toHaveBeenCalledWith("id", sellerId);
-    expect(sellerUpdateEqStatus).toHaveBeenCalledWith("status", "offline");
-    expect(sellerUpdateEqUpdatedAt).toHaveBeenCalledWith(
+    expect(sellerUpdateQuery.eq).toHaveBeenCalledWith("id", sellerId);
+    expect(sellerUpdateQuery.eq).toHaveBeenCalledWith("network_profile", "live-mainnet");
+    expect(sellerUpdateQuery.eq).toHaveBeenCalledWith("status", "offline");
+    expect(sellerUpdateQuery.eq).toHaveBeenCalledWith(
       "updated_at",
       "2026-05-13T10:00:00.000Z"
     );
@@ -259,8 +254,8 @@ describe("seller lifecycle routes", () => {
       status: "stale",
       seller_status: "unchanged"
     });
-    expect(sellerUpdateEqStatus).toHaveBeenCalledWith("status", "idle");
-    expect(sellerUpdateEqUpdatedAt).toHaveBeenCalledWith(
+    expect(sellerUpdateQuery.eq).toHaveBeenCalledWith("status", "idle");
+    expect(sellerUpdateQuery.eq).toHaveBeenCalledWith(
       "updated_at",
       "2026-05-13T10:00:00.000Z"
     );
@@ -294,7 +289,7 @@ describe("seller lifecycle routes", () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe("SELLER_REGISTRATION_STALE");
-    expect(sellerUpdateIs).toHaveBeenCalledWith("passport_subject", null);
+    expect(sellerUpdateQuery.is).toHaveBeenCalledWith("passport_subject", null);
     expect(eventInsert).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,10 @@ import {
 import { getServerEnv } from "@/lib/env";
 import { buildFingerprint } from "@/lib/fingerprint";
 import {
+  getNetworkProfile,
+  NetworkProfileConfigError
+} from "@/lib/network-profiles";
+import {
   buildQuoteContext,
   createSettlingJob,
   finalizeSettlingJobPayment,
@@ -146,6 +150,7 @@ async function registerDemoSeller(params: {
       passport_agent_id: "quotadex-demo-seller",
       passport_payer_addr: params.sellerId,
       approval_status: "approved",
+      network_profile: "demo-testnet",
       capability: params.capability,
       price_per_task: params.pricePerTask,
       status: "busy",
@@ -153,7 +158,7 @@ async function registerDemoSeller(params: {
       updated_at: now
     },
     {
-      onConflict: "id"
+      onConflict: "id,network_profile"
     }
   );
 
@@ -235,18 +240,23 @@ export async function POST(request: Request) {
   }
 
   let env: ReturnType<typeof getServerEnv>;
+  let demoProfile: ReturnType<typeof getNetworkProfile>;
 
   try {
     env = getServerEnv();
+    demoProfile = getNetworkProfile(env, "demo-testnet");
   } catch (error) {
     return internalServerErrorResponse(
       "Missing Gateway configuration for demo.",
       "GATEWAY_CONFIG_MISSING",
-      { reason: error instanceof Error ? error.message : "Unknown config error." }
+      {
+        code: error instanceof NetworkProfileConfigError ? error.code : undefined,
+        reason: error instanceof Error ? error.message : "Unknown config error."
+      }
     );
   }
 
-  if (env.KITE_NETWORK !== "kite-testnet" || env.KITE_CHAIN_ID !== "2368") {
+  if (demoProfile.network !== "kite-testnet" || demoProfile.chainId !== "2368") {
     return badRequestResponse(
       "The one-click chain demo only runs on Kite Testnet.",
       "DEMO_NETWORK_UNSUPPORTED"
@@ -304,7 +314,7 @@ export async function POST(request: Request) {
     demoBuyerId = buyerAccount.address;
     const runId = randomUUID();
     const pricePerTask = process.env.DEMO_PRICE_PER_TASK?.trim() || "0.001";
-    const tokenDecimals = Number.parseInt(env.PAYMENT_TOKEN_DECIMALS, 10);
+    const tokenDecimals = Number.parseInt(demoProfile.paymentTokenDecimals, 10);
     const amountAtomic = toOnChainAmount(pricePerTask, tokenDecimals).toString();
     demoAmountAtomic = amountAtomic;
     const promptForFingerprint = `${demoRequest.prompt}\n\n[QuotaDEX demo run: ${runId}]`;
@@ -312,7 +322,8 @@ export async function POST(request: Request) {
       {
         buyerId: buyerAccount.address,
         capability: demoRequest.capability,
-        prompt: promptForFingerprint
+        prompt: promptForFingerprint,
+        networkProfile: "demo-testnet"
       },
       env.GATEWAY_SALT
     );
@@ -325,11 +336,13 @@ export async function POST(request: Request) {
       capability: demoRequest.capability,
       amount: pricePerTask,
       amount_atomic: amountAtomic,
-      currency: env.PAYMENT_CURRENCY,
+      currency: demoProfile.paymentCurrency,
       payment_mode: "x402-escrow",
-      payment_asset: env.KITE_PAYMENT_ASSET_ADDRESS,
-      pay_to: env.ESCROW_CONTRACT_ADDRESS,
-      network: env.KITE_NETWORK
+      payment_asset: demoProfile.paymentAssetAddress,
+      pay_to: demoProfile.escrowContractAddress,
+      network_profile: "demo-testnet",
+      network: demoProfile.network,
+      chain_id: demoProfile.chainId
     });
     const verifyRequest = {
       fingerprint,
@@ -344,10 +357,10 @@ export async function POST(request: Request) {
     };
 
     await assertDemoEscrowConfig({
-      rpcUrl: env.KITE_RPC_URL,
-      escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-      paymentTokenAddress: env.KITE_PAYMENT_ASSET_ADDRESS,
-      gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+      rpcUrl: demoProfile.rpcUrl,
+      escrowAddress: demoProfile.escrowContractAddress,
+      paymentTokenAddress: demoProfile.paymentAssetAddress,
+      gatewayPrivateKey: demoProfile.gatewayPrivateKey
     });
 
     await registerDemoSeller({
@@ -364,9 +377,9 @@ export async function POST(request: Request) {
     settlingJobId = settlingJob.id;
     const settlement = await transferDemoPaymentToEscrow({
       buyerPrivateKey,
-      rpcUrl: env.KITE_RPC_URL,
-      tokenAddress: env.KITE_PAYMENT_ASSET_ADDRESS,
-      escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
+      rpcUrl: demoProfile.rpcUrl,
+      tokenAddress: demoProfile.paymentAssetAddress,
+      escrowAddress: demoProfile.escrowContractAddress,
       amountAtomic
     });
     settlementTxHash = settlement.txHash;
@@ -376,9 +389,9 @@ export async function POST(request: Request) {
       paymentId: quoteContext.payment_id,
       buyerId: buyerAccount.address,
       amountAtomic,
-      rpcUrl: env.KITE_RPC_URL,
-      tokenAddress: env.KITE_PAYMENT_ASSET_ADDRESS,
-      escrowAddress: env.ESCROW_CONTRACT_ADDRESS
+      rpcUrl: demoProfile.rpcUrl,
+      tokenAddress: demoProfile.paymentAssetAddress,
+      escrowAddress: demoProfile.escrowContractAddress
     });
 
     const escrowRegistration = await registerFacilitatorEscrowPayment({
@@ -387,9 +400,9 @@ export async function POST(request: Request) {
       sellerId: sellerAccount.address,
       amountAtomic,
       settlementTxHash: settlement.txHash,
-      rpcUrl: env.KITE_RPC_URL,
-      escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-      gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+      rpcUrl: demoProfile.rpcUrl,
+      escrowAddress: demoProfile.escrowContractAddress,
+      gatewayPrivateKey: demoProfile.gatewayPrivateKey
     });
     registeredPaymentId = quoteContext.payment_id;
     escrowRegistered = true;
@@ -405,7 +418,7 @@ export async function POST(request: Request) {
         escrowRegistrationTxHash: escrowRegistration.txHash,
         buyerWalletAddress: buyerAccount.address,
         sellerWalletAddress: sellerAccount.address,
-        escrowContractAddress: env.ESCROW_CONTRACT_ADDRESS
+        escrowContractAddress: demoProfile.escrowContractAddress
       }
     });
 
@@ -425,7 +438,7 @@ export async function POST(request: Request) {
       sellerId: sellerAccount.address,
       signature: startSignature.signature,
       signedAt: startSignature.signedAt,
-      rpcUrl: env.KITE_RPC_URL
+      rpcUrl: demoProfile.rpcUrl
     });
     const runningJob = await updateJobStatusForSeller({
       jobId: paidJob.id,
@@ -450,14 +463,14 @@ export async function POST(request: Request) {
       sellerId: sellerAccount.address,
       signature: completeSignature.signature,
       signedAt: completeSignature.signedAt,
-      rpcUrl: env.KITE_RPC_URL
+      rpcUrl: demoProfile.rpcUrl
     });
     const release = await executeEscrowGatewayAction({
       action: "release",
       paymentId: quoteContext.payment_id,
-      rpcUrl: env.KITE_RPC_URL,
-      escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-      gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+      rpcUrl: demoProfile.rpcUrl,
+      escrowAddress: demoProfile.escrowContractAddress,
+      gatewayPrivateKey: demoProfile.gatewayPrivateKey
     });
     releaseTxHash = release.txHash;
 
@@ -468,7 +481,7 @@ export async function POST(request: Request) {
     });
 
     const result = {
-      text: `[Demo result] ${demoRequest.capability} processed the prompt and Gateway released ${pricePerTask} ${env.PAYMENT_CURRENCY} to the seller on Kite Testnet.`,
+      text: `[Demo result] ${demoRequest.capability} processed the prompt and Gateway released ${pricePerTask} ${demoProfile.paymentCurrency} to the seller on Kite Testnet.`,
       meta: {
         job_id: paidJob.id,
         completed_at: new Date().toISOString(),
@@ -486,9 +499,10 @@ export async function POST(request: Request) {
       throw new Error("Demo job could not be completed.");
     }
 
-    await setSellerIdleAfterExecution(sellerAccount.address);
+    await setSellerIdleAfterExecution(sellerAccount.address, "demo-testnet");
     await logJobEvent({
       jobId: paidJob.id,
+      networkProfile: "demo-testnet",
       type: "DEMO_DONE",
       message: `Demo run ${runId} completed and released payment ${quoteContext.payment_id}.`
     });
@@ -502,13 +516,14 @@ export async function POST(request: Request) {
         fingerprint,
         buyer_id: buyerAccount.address,
         seller_id: sellerAccount.address,
-        pay_to: env.ESCROW_CONTRACT_ADDRESS,
+        network_profile: "demo-testnet",
+        pay_to: demoProfile.escrowContractAddress,
         amount: pricePerTask,
         amount_atomic: amountAtomic,
-        currency: env.PAYMENT_CURRENCY,
-        payment_asset: env.KITE_PAYMENT_ASSET_ADDRESS,
-        network: env.KITE_NETWORK,
-        chain_id: env.KITE_CHAIN_ID
+        currency: demoProfile.paymentCurrency,
+        payment_asset: demoProfile.paymentAssetAddress,
+        network: demoProfile.network,
+        chain_id: demoProfile.chainId
       },
       payment: {
         settlement_tx_hash: settlement.txHash,
@@ -525,10 +540,10 @@ export async function POST(request: Request) {
         result: completedJob.result
       },
       explorer: {
-        escrow: `${env.KITE_EXPLORER_URL}/address/${env.ESCROW_CONTRACT_ADDRESS}`,
-        settlement: `${env.KITE_EXPLORER_URL}/tx/${settlement.txHash}`,
-        escrow_registration: `${env.KITE_EXPLORER_URL}/tx/${escrowRegistration.txHash}`,
-        release: `${env.KITE_EXPLORER_URL}/tx/${release.txHash}`
+        escrow: `${demoProfile.explorerUrl}/address/${demoProfile.escrowContractAddress}`,
+        settlement: `${demoProfile.explorerUrl}/tx/${settlement.txHash}`,
+        escrow_registration: `${demoProfile.explorerUrl}/tx/${escrowRegistration.txHash}`,
+        release: `${demoProfile.explorerUrl}/tx/${release.txHash}`
       }
     });
   } catch (error) {
@@ -537,9 +552,9 @@ export async function POST(request: Request) {
         const refund = await executeEscrowGatewayAction({
           action: "refund",
           paymentId: registeredPaymentId,
-          rpcUrl: env.KITE_RPC_URL,
-          escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-          gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+          rpcUrl: demoProfile.rpcUrl,
+          escrowAddress: demoProfile.escrowContractAddress,
+          gatewayPrivateKey: demoProfile.gatewayPrivateKey
         });
         compensationRefundTxHash = refund.txHash;
 
@@ -570,9 +585,9 @@ export async function POST(request: Request) {
         const recovery = await recoverExcessEscrowPaymentToken({
           recipientAddress: demoBuyerId,
           amountAtomic: demoAmountAtomic,
-          rpcUrl: env.KITE_RPC_URL,
-          escrowAddress: env.ESCROW_CONTRACT_ADDRESS,
-          gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+          rpcUrl: demoProfile.rpcUrl,
+          escrowAddress: demoProfile.escrowContractAddress,
+          gatewayPrivateKey: demoProfile.gatewayPrivateKey
         });
         compensationRecoveryTxHash = recovery.txHash;
       } catch (recoveryError) {
@@ -590,7 +605,7 @@ export async function POST(request: Request) {
 
     if (activeSellerId) {
       try {
-        await setSellerIdleAfterExecution(activeSellerId);
+        await setSellerIdleAfterExecution(activeSellerId, "demo-testnet");
       } catch (sellerError) {
         console.error("Failed to release demo seller after failed run", {
           sellerId: activeSellerId,

@@ -4,7 +4,7 @@
 
 **首个去中心化 AI 算力市场——为 Agent 而生，链上结算。**
 
-QuotaDEX 是一个 Agent 对 Agent（A2A）的 AI 算力二级市场。任何 LLM 卖家都可以将闲置配额变现，任何自主 Agent 都可以按需购买算力——无需 API 密钥、无需合同、无需人工介入。每笔任务通过 HTTP 402 报价，使用 Kite Agent Passport/x402 付款，由 Kite AI 上的自定义 Escrow 合约担保，并在 Kite Testnet 以 Test USDT 结算。
+QuotaDEX 是一个 Agent 对 Agent（A2A）的 AI 算力二级市场。任何 LLM 卖家都可以将闲置配额变现，任何自主 Agent 都可以按需购买算力——无需 API 密钥、无需合同、无需人工介入。每笔任务通过 HTTP 402 报价，使用 Kite Agent Passport/x402 付款，由 Kite AI 上的自定义 Escrow 合约担保。Dashboard 分为 Demo 与 Live：Demo 固定 Kite Testnet + Test USDT，Live Testnet / Live Mainnet 面向真实 Agent 流量并统一使用 USDC。
 
 是 **AgentBazaar** 愿景的第一步：为自主 Agent 经济构建开放、可问责的商业结算层。
 
@@ -86,14 +86,14 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
      ┌───────▼──────────────┐
      │   Kite AI (EVM)      │
      │  QuotaDEXEscrow.sol  │
-     │  Test USDT 支付      │
+     │  Demo USDT / Live USDC│
      └──────────────────────┘
 ```
 
 **关键设计决策：**
 
 - `payment_id` 与 `job_id` 刻意分离——支付身份在报价时确立，任务身份在验证时确立。
-- MVP 中 `fingerprint` 复用为 `payment_id`，将精确的请求参数绑定到链上存款。
+- MVP 中 `fingerprint` 复用为 `payment_id`，将精确的请求参数和 `network_profile` 绑定到链上付款登记。
 - Supabase 是所有正式状态转换的唯一真相来源。
 - Redis 仅存储短生命周期的报价上下文（有 TTL 限制）。
 - Seller 状态转换严格通过 Gateway API 进行，不允许客户端直接写入。
@@ -166,9 +166,11 @@ Seller 任务回调优先使用 Gateway seller session：先通过 `/api/v1/sell
 
 | 方法  | 路径                           | 说明                              |
 | ----- | ------------------------------ | --------------------------------- |
-| `GET` | `/api/v1/dashboard/summary`    | 聚合统计（Seller 数、任务数、成交量） |
-| `GET` | `/api/v1/dashboard/market`     | 在线 Seller 及其能力列表           |
-| `GET` | `/api/v1/dashboard/events`     | 最近任务事件流                     |
+| `GET` | `/api/v1/dashboard/summary?mode=demo` | Demo Testnet 聚合统计 |
+| `GET` | `/api/v1/dashboard/summary?mode=live&network=testnet` | Live Testnet 监控统计 |
+| `GET` | `/api/v1/dashboard/summary?mode=live&network=mainnet` | Live Mainnet 生产统计 |
+| `GET` | `/api/v1/dashboard/market?...` | 当前 scope 的在线 Seller 与能力列表 |
+| `GET` | `/api/v1/dashboard/events?...` | 当前 scope 的最近任务事件流 |
 
 ---
 
@@ -191,12 +193,11 @@ GATEWAY_SALT=                           # 用于指纹生成的随机密钥
 SELLER_SESSION_TTL_SECONDS=900          # Gateway seller session 有效期
 ALLOW_SELLER_SIGNATURE_AUTH=false      # 仅本地 legacy EVM seller 签名使用
 
-# Kite AI / 区块链
+# Demo Kite AI / 区块链默认值
 KITE_NETWORK=kite-testnet
 KITE_CHAIN_ID=2368
 KITE_RPC_URL=https://rpc-testnet.gokite.ai
 KITE_EXPLORER_URL=https://testnet.kitescan.ai
-ESCROW_CONTRACT_ADDRESS=                # 已部署的 QuotaDEXEscrow 合约地址
 GATEWAY_PRIVATE_KEY=                    # Gateway 钱包私钥（不是合约私钥）
 
 # Kite Passport identity verification for seller sessions
@@ -208,7 +209,30 @@ PIEVERSE_FACILITATOR_BASE_URL=https://facilitator.pieverse.io
 KITE_PAYMENT_ASSET_ADDRESS=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63
 PAYMENT_TOKEN_DECIMALS=18
 PAYMENT_CURRENCY=USDT
+ESCROW_CONTRACT_ADDRESS=                # 已部署的 Kite Testnet Test USDT Escrow
 ALLOW_MOCK_PAYMENTS=false
+
+# Network profiles
+DEMO_ESCROW_CONTRACT_ADDRESS=           # 可选；默认使用 ESCROW_CONTRACT_ADDRESS
+LIVE_TESTNET_PAYMENT_ASSET_ADDRESS=     # 真实 Agent 测试网 USDC profile，部署后填写
+LIVE_TESTNET_PAYMENT_CURRENCY=USDC
+LIVE_TESTNET_PAYMENT_TOKEN_DECIMALS=6
+LIVE_TESTNET_ESCROW_CONTRACT_ADDRESS=
+LIVE_MAINNET_KITE_NETWORK=kite-mainnet
+LIVE_MAINNET_KITE_CHAIN_ID=2366
+LIVE_MAINNET_KITE_RPC_URL=https://rpc.gokite.ai/
+LIVE_MAINNET_KITE_EXPLORER_URL=https://kitescan.ai
+LIVE_MAINNET_PAYMENT_ASSET_ADDRESS=0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e
+LIVE_MAINNET_PAYMENT_CURRENCY=USDC
+LIVE_MAINNET_PAYMENT_TOKEN_DECIMALS=6
+LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS=   # 主网 QuotaDEXEscrow(gateway, USDC.e)
+
+# Seller bond / kpass wallet proof
+SELLER_BOND_AMOUNT=0.01
+SELLER_BOND_RECEIVER_ADDRESS=           # 可选；默认使用 GATEWAY_PRIVATE_KEY 钱包地址
+SELLER_BOND_TOKEN_ADDRESS=              # 可选；默认使用所选 profile 的支付 Token
+SELLER_BOND_TOKEN_SYMBOL=               # 可选；默认使用所选 profile 的 currency
+SELLER_BOND_TOKEN_DECIMALS=             # 可选；默认使用所选 profile 的 decimals
 
 # 一键 Kite Testnet Demo。这些钱包只花费和接收测试网 USDT。
 BUYER_PRIVATE_KEY=

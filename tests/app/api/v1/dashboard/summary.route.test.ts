@@ -9,16 +9,31 @@ vi.mock("@/lib/supabase", () => ({
 type MockTable = "sellers" | "jobs" | "events";
 
 function createMockSupabase(rows: Record<MockTable, unknown[]>) {
+  const filters: Array<{ table: MockTable; column: string; values: string[] }> = [];
+  const selects: Array<{ table: MockTable; columns: string }> = [];
+
   return {
+    filters,
+    selects,
     from(table: MockTable) {
-      return {
-        async select() {
-          return {
+      const query = {
+        select(columns: string) {
+          selects.push({ table, columns });
+          return query;
+        },
+        in(column: string, values: string[]) {
+          filters.push({ table, column, values });
+          return query;
+        },
+        then(resolve: (value: { data: unknown[]; error: null }) => unknown) {
+          return Promise.resolve({
             data: rows[table],
             error: null
-          };
+          }).then(resolve);
         }
       };
+
+      return query;
     }
   };
 }
@@ -34,8 +49,7 @@ describe("GET /api/v1/dashboard/summary", () => {
   });
 
   it("returns KPI rollups and current payment route narrative", async () => {
-    vi.mocked(createServerSupabaseClient).mockReturnValue(
-      createMockSupabase({
+    const supabase = createMockSupabase({
         sellers: [
           { status: "idle" },
           { status: "busy" },
@@ -99,13 +113,24 @@ describe("GET /api/v1/dashboard/summary", () => {
           },
           { job_id: null, type: "SELLER_ONLINE", timestamp: "2026-04-19T08:00:00.000Z" }
         ]
-      }) as never
-    );
+      });
+    vi.mocked(createServerSupabaseClient).mockReturnValue(supabase as never);
 
-    const response = await GET();
+    const response = await GET(
+      new Request("https://quotadex.test/api/v1/dashboard/summary?mode=live&network=mainnet")
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(200);
+    expect(supabase.filters).toEqual([
+      { table: "sellers", column: "network_profile", values: ["live-mainnet"] },
+      { table: "jobs", column: "network_profile", values: ["live-mainnet"] },
+      { table: "events", column: "network_profile", values: ["live-mainnet"] }
+    ]);
+    expect(supabase.selects).toContainEqual({
+      table: "jobs",
+      columns: "id, status, payment_status, amount, created_at"
+    });
     expect(payload.activity24h).toHaveLength(24);
     expect(
       payload.activity24h.find((bucket: { hour: string }) => bucket.hour === "2026-05-13T08:00:00.000Z")
@@ -138,7 +163,7 @@ describe("GET /api/v1/dashboard/summary", () => {
       settlement: {
         primary: "Kite x402 Escrow",
         fallback: "Mock fallback only",
-        future: "Mainnet env switch"
+        future: "Profile-based Live Mainnet switch"
       },
       updatedAt: "2026-05-13T09:10:00.000Z",
       activity24h: payload.activity24h

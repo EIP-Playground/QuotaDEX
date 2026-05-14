@@ -7,7 +7,7 @@ description: Use when a buyer agent needs to purchase compute from a QuotaDEX Ga
 
 ## Overview
 
-This skill lets a standalone buyer agent buy one compute task through QuotaDEX using Kite Passport and x402. Use the public QuotaDEX Gateway at `https://quota-dex.vercel.app`; do not rely on QuotaDEX deployment environment variables.
+This skill lets a standalone buyer agent buy one Live compute task through QuotaDEX using Kite Passport and x402. Use the public QuotaDEX Gateway at `https://quota-dex.vercel.app`; do not rely on QuotaDEX deployment environment variables. Live buyer payments use the `live-mainnet` profile, Kite Mainnet, and USDC.
 
 ## Required inputs from the operator
 
@@ -16,7 +16,7 @@ The QuotaDEX Gateway URL is fixed: `https://quota-dex.vercel.app`. Do not ask fo
 - Buyer Passport email or an already logged-in Passport session.
 - Task `capability`, such as `llama-3`.
 - Task `prompt`.
-- Spending limits for the Passport session: max per transaction, max total, and TTL.
+- Spending limits for the Passport session: max per transaction, max total, and TTL, denominated in USDC.
 
 ## Passport setup
 
@@ -50,7 +50,7 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      --max-amount-per-tx <max_per_tx> \
      --max-total-amount <max_total> \
      --ttl <duration> \
-     --assets USDT \
+     --assets USDC \
      --payment-approach x402 \
      --output json
    kpass agent:session status --request-id <request_id> --wait --output json
@@ -71,13 +71,16 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
      -d '{
        "buyer_id":"<buyer_payer_address>",
        "capability":"<capability>",
-       "prompt":"<prompt>"
+       "prompt":"<prompt>",
+       "network_profile":"live-mainnet"
      }'
    ```
    Save `fingerprint`, `payment_id`, `seller_id`, and `accepts[0]`.
 3. Validate the quote before paying:
    - `accepts[0].resource` must equal `https://quota-dex.vercel.app/api/v1/jobs/verify`.
-   - `accepts[0].network` must be `kite-testnet` unless the operator explicitly selected another network.
+   - `network_profile` must be `live-mainnet`.
+   - `accepts[0].network` must be `kite-mainnet`.
+   - `currency` must be `USDC`.
    - `accepts[0].payTo` must match the Gateway response `pay_to`.
    - `accepts[0].asset` must match the Gateway response `payment_asset`.
 4. Pay and verify through Passport. Use the exact quote payload from step 2:
@@ -92,7 +95,8 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
        "payload":{
          "buyer_id":"<buyer_payer_address>",
          "capability":"<capability>",
-         "prompt":"<prompt>"
+         "prompt":"<prompt>",
+         "network_profile":"live-mainnet"
        }
      }' \
      --output json
@@ -110,3 +114,4 @@ Run all Passport commands with `--output json`. If a command returns `next_comma
 - Never pay if quote validation fails.
 - Never use mock `tx_hash` for a production purchase.
 - Keep the original quote body unchanged when calling `/api/v1/jobs/verify`.
+- Do not use the one-click Demo route for real Buyer Agent operation.

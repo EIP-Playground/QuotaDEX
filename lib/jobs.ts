@@ -1,10 +1,15 @@
 import { createRedisClient } from "@/lib/redis";
 import { createServerSupabaseClient } from "@/lib/supabase";
+import {
+  parseNetworkProfileId,
+  type NetworkProfileId
+} from "@/lib/network-profiles";
 
 export type QuoteRequestBody = {
   buyer_id: string;
   capability: string;
   prompt: string;
+  network_profile?: NetworkProfileId;
   demo_run_id?: string;
   demo_payment_mode?: "demo-direct-escrow";
 };
@@ -22,7 +27,9 @@ export type QuoteContext = {
   payment_mode: PaymentMode;
   payment_asset: string;
   pay_to: string;
+  network_profile: NetworkProfileId;
   network: string;
+  chain_id: string;
   created_at: string;
   expires_at: string;
 };
@@ -52,6 +59,7 @@ type SellerCandidateRow = {
   capability: string;
   price_per_task: string | number;
   status: "idle" | "reserved";
+  network_profile: NetworkProfileId;
   updated_at: string;
   last_heartbeat_at: string | null;
 };
@@ -102,6 +110,7 @@ export type JobSnapshot = {
   tx_hash: string | null;
   payment_mode: PaymentMode;
   escrow_contract_address: string | null;
+  network_profile: NetworkProfileId;
   settlement_tx_hash: string | null;
   escrow_registration_tx_hash: string | null;
   payload: Record<string, unknown>;
@@ -185,14 +194,16 @@ function getOnlineSellerCutoff(now = new Date()): string {
 }
 
 async function listIdleSellerCandidates(
-  capability: string
+  capability: string,
+  networkProfile: NetworkProfileId
 ): Promise<SellerCandidateRow[]> {
   const supabase = createServerSupabaseClient();
 
   const { data: idleCandidates, error: idleError } = await supabase
     .from("sellers")
-    .select("id, capability, price_per_task, status, updated_at, last_heartbeat_at")
+    .select("id, capability, price_per_task, status, network_profile, updated_at, last_heartbeat_at")
     .eq("capability", capability)
+    .eq("network_profile", networkProfile)
     .eq("status", "idle")
     .gte("last_heartbeat_at", getOnlineSellerCutoff())
     .order("updated_at", { ascending: false })
@@ -206,15 +217,17 @@ async function listIdleSellerCandidates(
 }
 
 async function listStaleReservedSellerCandidates(
-  capability: string
+  capability: string,
+  networkProfile: NetworkProfileId
 ): Promise<SellerCandidateRow[]> {
   const supabase = createServerSupabaseClient();
 
   const { data: staleReservedCandidates, error: staleReservedError } =
     await supabase
       .from("sellers")
-      .select("id, capability, price_per_task, status, updated_at, last_heartbeat_at")
+      .select("id, capability, price_per_task, status, network_profile, updated_at, last_heartbeat_at")
       .eq("capability", capability)
+      .eq("network_profile", networkProfile)
       .eq("status", "reserved")
       .lte("updated_at", getReservedSellerCutoff())
       .gte("last_heartbeat_at", getOnlineSellerCutoff())
@@ -242,9 +255,10 @@ async function tryReserveSellerCandidate(
       updated_at: reservedAt
     })
     .eq("id", candidate.id)
+    .eq("network_profile", candidate.network_profile)
     .eq("status", candidate.status)
     .eq("updated_at", candidate.updated_at)
-    .select("id, capability, price_per_task, updated_at")
+    .select("id, capability, price_per_task, network_profile, updated_at")
     .maybeSingle();
 
   if (reserveError) {
@@ -285,10 +299,22 @@ export function parseQuoteRequestBody(input: unknown): QuoteRequestBody {
     throw new Error("Request body must be a JSON object.");
   }
 
+  const demoPaymentMode =
+    input.demo_payment_mode === "demo-direct-escrow"
+      ? "demo-direct-escrow"
+      : undefined;
+  const networkProfile = readOptionalString(input, "network_profile");
+
   return {
     buyer_id: readRequiredString(input, "buyer_id"),
     capability: readRequiredString(input, "capability"),
-    prompt: readRequiredString(input, "prompt")
+    prompt: readRequiredString(input, "prompt"),
+    network_profile:
+      networkProfile || demoPaymentMode
+        ? parseNetworkProfileId(networkProfile, "demo-testnet")
+        : undefined,
+    demo_run_id: readOptionalString(input, "demo_run_id"),
+    demo_payment_mode: demoPaymentMode
   };
 }
 
@@ -366,6 +392,12 @@ export function parseQuoteContextValue(input: unknown): QuoteContext {
     throw new Error("Quote context must be a JSON object.");
   }
 
+  const network = readRequiredString(value, "network");
+  const networkProfile = parseNetworkProfileId(
+    readOptionalString(value, "network_profile"),
+    "demo-testnet"
+  );
+
   return {
     payment_id: readRequiredString(value, "payment_id"),
     fingerprint: readRequiredString(value, "fingerprint"),
@@ -379,18 +411,23 @@ export function parseQuoteContextValue(input: unknown): QuoteContext {
     payment_mode: parsePaymentMode(readRequiredString(value, "payment_mode")),
     payment_asset: readRequiredString(value, "payment_asset"),
     pay_to: readRequiredString(value, "pay_to"),
-    network: readRequiredString(value, "network"),
+    network_profile: networkProfile,
+    network,
+    chain_id:
+      readOptionalString(value, "chain_id") ??
+      (networkProfile === "live-mainnet" ? "2366" : "2368"),
     created_at: readRequiredString(value, "created_at"),
     expires_at: readRequiredString(value, "expires_at")
   };
 }
 
 export async function reserveSellerForQuote(
-  capability: string
+  capability: string,
+  networkProfile: NetworkProfileId
 ): Promise<ReservedSeller | null> {
   const candidateGroups = [
-    await listIdleSellerCandidates(capability),
-    await listStaleReservedSellerCandidates(capability)
+    await listIdleSellerCandidates(capability, networkProfile),
+    await listStaleReservedSellerCandidates(capability, networkProfile)
   ];
 
   for (const candidates of candidateGroups) {
@@ -406,7 +443,10 @@ export async function reserveSellerForQuote(
   return null;
 }
 
-export async function releaseReservedSeller(sellerId: string): Promise<void> {
+export async function releaseReservedSeller(
+  sellerId: string,
+  networkProfile: NetworkProfileId
+): Promise<void> {
   const supabase = createServerSupabaseClient();
   const { error } = await supabase
     .from("sellers")
@@ -415,6 +455,7 @@ export async function releaseReservedSeller(sellerId: string): Promise<void> {
       updated_at: new Date().toISOString()
     })
     .eq("id", sellerId)
+    .eq("network_profile", networkProfile)
     .eq("status", "reserved");
 
   if (error) {
@@ -461,12 +502,14 @@ function buildJobPayload(verifyRequest: VerifyRequestBody) {
     buyer_id: string;
     capability: string;
     prompt: string;
+    network_profile?: NetworkProfileId;
     demo_run_id?: string;
     demo_payment_mode?: "demo-direct-escrow";
   } = {
     buyer_id: verifyRequest.payload.buyer_id,
     capability: verifyRequest.payload.capability,
-    prompt: verifyRequest.payload.prompt
+    prompt: verifyRequest.payload.prompt,
+    network_profile: verifyRequest.payload.network_profile
   };
 
   if (verifyRequest.payload.demo_run_id) {
@@ -503,6 +546,7 @@ export async function createSettlingJob(
       buyer_wallet_address: params.quoteContext.buyer_id,
       seller_wallet_address: params.quoteContext.seller_id,
       escrow_contract_address: params.quoteContext.pay_to,
+      network_profile: params.quoteContext.network_profile,
       settlement_tx_hash: null,
       escrow_registration_tx_hash: null,
       expires_at: params.quoteContext.expires_at,
@@ -550,6 +594,7 @@ export async function finalizeSettlingJobPayment(
         params.payment.sellerWalletAddress ?? params.quoteContext.seller_id,
       escrow_contract_address:
         params.payment.escrowContractAddress ?? params.quoteContext.pay_to,
+      network_profile: params.quoteContext.network_profile,
       settlement_tx_hash: params.payment.settlementTxHash ?? null,
       escrow_registration_tx_hash: params.payment.escrowRegistrationTxHash ?? null,
       payload: buildJobPayload(params.verifyRequest),
@@ -609,6 +654,7 @@ export async function createPaidJob(
         payment?.sellerWalletAddress ?? params.quoteContext.seller_id,
       escrow_contract_address:
         payment?.escrowContractAddress ?? params.quoteContext.pay_to,
+      network_profile: params.quoteContext.network_profile,
       settlement_tx_hash: payment?.settlementTxHash ?? null,
       escrow_registration_tx_hash: payment?.escrowRegistrationTxHash ?? null,
       expires_at: params.quoteContext.expires_at,
@@ -645,6 +691,7 @@ export async function markSellerBusyForPayment(
       updated_at: new Date().toISOString()
     })
     .eq("id", quoteContext.seller_id)
+    .eq("network_profile", quoteContext.network_profile)
     .eq("status", "reserved")
     .eq("updated_at", quoteContext.seller_reserved_at)
     .select("id")
@@ -671,7 +718,7 @@ export async function loadJobSnapshot(jobId: string): Promise<JobSnapshot | null
   const { data, error } = await supabase
     .from("jobs")
     .select(
-      "id, seller_id, status, payment_id, tx_hash, payment_mode, escrow_contract_address, settlement_tx_hash, escrow_registration_tx_hash, payload, result"
+      "id, seller_id, status, payment_id, tx_hash, payment_mode, escrow_contract_address, network_profile, settlement_tx_hash, escrow_registration_tx_hash, payload, result"
     )
     .eq("id", jobId)
     .maybeSingle();
@@ -680,7 +727,16 @@ export async function loadJobSnapshot(jobId: string): Promise<JobSnapshot | null
     throw new Error(`Failed to load job ${jobId}: ${error.message}`);
   }
 
-  return (data as JobSnapshot | null) ?? null;
+  if (!data) {
+    return null;
+  }
+
+  const row = data as JobSnapshot & { network_profile?: NetworkProfileId | null };
+
+  return {
+    ...row,
+    network_profile: row.network_profile ?? "demo-testnet"
+  };
 }
 
 export async function updateJobStatusForSeller(params: {
@@ -719,7 +775,8 @@ export async function updateJobStatusForSeller(params: {
 }
 
 export async function setSellerIdleAfterExecution(
-  sellerId: string
+  sellerId: string,
+  networkProfile: NetworkProfileId
 ): Promise<boolean> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
@@ -729,6 +786,7 @@ export async function setSellerIdleAfterExecution(
       updated_at: new Date().toISOString()
     })
     .eq("id", sellerId)
+    .eq("network_profile", networkProfile)
     .eq("status", "busy")
     .select("id")
     .maybeSingle();
@@ -767,10 +825,12 @@ export async function logJobEvent(params: {
   jobId: string;
   type: string;
   message: string;
+  networkProfile?: NetworkProfileId;
 }): Promise<void> {
   const supabase = createServerSupabaseClient();
   const { error } = await supabase.from("events").insert({
     job_id: params.jobId,
+    network_profile: params.networkProfile,
     type: params.type,
     message: params.message
   });

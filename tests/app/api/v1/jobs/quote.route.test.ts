@@ -38,6 +38,8 @@ describe("POST /api/v1/jobs/quote", () => {
     process.env.PAYMENT_CURRENCY = "USDT";
     process.env.ESCROW_CONTRACT_ADDRESS =
       "0x4444444444444444444444444444444444444444";
+    process.env.LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS =
+      "0x9999999999999999999999999999999999999999";
     process.env.GATEWAY_PUBLIC_BASE_URL = "https://gateway.quotadex.test";
 
     redisSet.mockResolvedValue(null);
@@ -59,7 +61,7 @@ describe("POST /api/v1/jobs/quote", () => {
     });
   });
 
-  it("quotes x402 escrow payment to the escrow contract in atomic Test USDT units", async () => {
+  it("quotes x402 escrow payment to the Live Mainnet USDC escrow by default", async () => {
     const response = await POST(
       new Request("https://quotadex.test/api/v1/jobs/quote", {
         method: "POST",
@@ -76,24 +78,28 @@ describe("POST /api/v1/jobs/quote", () => {
     expect(payload).toMatchObject({
       code: "PAYMENT_REQUIRED",
       payment_mode: "x402-escrow",
-      pay_to: "0x4444444444444444444444444444444444444444",
+      network_profile: "live-mainnet",
+      pay_to: "0x9999999999999999999999999999999999999999",
       amount: "0.005",
-      amount_atomic: "5000000000000000",
-      currency: "USDT",
-      network: "kite-testnet"
+      amount_atomic: "5000",
+      currency: "USDC",
+      network: "kite-mainnet",
+      chain_id: "2366"
     });
     expect(payload.accepts[0]).toMatchObject({
-      network: "kite-testnet",
-      asset: "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63",
-      payTo: "0x4444444444444444444444444444444444444444",
-      maxAmountRequired: "5000000000000000",
+      network: "kite-mainnet",
+      asset: "0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e",
+      payTo: "0x9999999999999999999999999999999999999999",
+      maxAmountRequired: "5000",
       resource: "https://gateway.quotadex.test/api/v1/jobs/verify"
     });
     expect(payload.accepts[0].extra).toMatchObject({
       payment_mode: "x402-escrow",
-      escrow_contract: "0x4444444444444444444444444444444444444444",
-      currency: "USDT",
-      amount_atomic: "5000000000000000"
+      escrow_contract: "0x9999999999999999999999999999999999999999",
+      currency: "USDC",
+      amount_atomic: "5000",
+      chain_id: "2366"
     });
+    expect(reserveSellerForQuote).toHaveBeenCalledWith("gpt-4o", "live-mainnet");
   });
 });

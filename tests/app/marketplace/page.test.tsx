@@ -50,7 +50,7 @@ describe("MarketplacePage", () => {
     expect(
       screen.getByRole("heading", { name: /global compute monitor/i })
     ).toBeInTheDocument();
-    expect(screen.getByText(/demo · simulated/i)).toBeInTheDocument();
+    expect(screen.getByText(/demo · demo testnet/i)).toBeInTheDocument();
     expect(screen.getByText(/active agents/i)).toBeInTheDocument();
     expect(screen.getByText(/24h volume/i)).toBeInTheDocument();
     expect(
@@ -71,7 +71,11 @@ describe("MarketplacePage", () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url.endsWith("/api/v1/dashboard/summary")) {
+      if (
+        url.includes("/api/v1/dashboard/summary") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
         return Response.json({
           metrics: {
             activeSellers: 1,
@@ -83,7 +87,11 @@ describe("MarketplacePage", () => {
         });
       }
 
-      if (url.endsWith("/api/v1/dashboard/market")) {
+      if (
+        url.includes("/api/v1/dashboard/market") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
         return Response.json({
           rows: [
             {
@@ -122,7 +130,11 @@ describe("MarketplacePage", () => {
         });
       }
 
-      if (url.endsWith("/api/v1/dashboard/events")) {
+      if (
+        url.includes("/api/v1/dashboard/events") &&
+        url.includes("mode=live") &&
+        url.includes("network=testnet")
+      ) {
         return Response.json({ items: [] });
       }
 
@@ -135,11 +147,64 @@ describe("MarketplacePage", () => {
     fireEvent.click(screen.getByRole("button", { name: /live/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/live · kite testnet/i)).toBeInTheDocument();
-      expect(screen.getByText("0.0030 USDT")).toBeInTheDocument();
+      expect(screen.getByText(/live · live testnet/i)).toBeInTheDocument();
+      expect(screen.getByText("0.0030 USDC")).toBeInTheDocument();
     });
 
     expect(screen.getByText(/gpt-4o · 3 jobs settled/i)).toBeInTheDocument();
     expect(screen.getByText("+0.0010")).toBeInTheDocument();
+  });
+
+  it("lets Live Dashboard switch from testnet monitoring to mainnet monitoring", async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes("/api/v1/dashboard/summary")) {
+        return Response.json({
+          metrics: {
+            activeSellers: 0,
+            openJobs: 0,
+            completedJobs: 0,
+            failedJobs: 0,
+            volume24h: 0
+          },
+          activity24h: []
+        });
+      }
+
+      if (url.includes("/api/v1/dashboard/market")) {
+        return Response.json({
+          rows: [],
+          topSellers: [],
+          recentSettlements: []
+        });
+      }
+
+      if (url.includes("/api/v1/dashboard/events")) {
+        return Response.json({ items: [] });
+      }
+
+      return Response.json({});
+    }) as typeof fetch;
+
+    const { default: MarketplacePage } = await import("@/app/marketplace/page");
+    render(<MarketplacePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /live/i }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("mode=live&network=testnet")
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /mainnet/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/live · live mainnet/i)).toBeInTheDocument();
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("mode=live&network=mainnet")
+      );
+    });
   });
 });

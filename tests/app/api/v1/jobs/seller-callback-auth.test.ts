@@ -55,6 +55,8 @@ describe("seller job callbacks", () => {
     payment_id: "payment-1",
     tx_hash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     payment_mode: "x402-escrow",
+    escrow_contract_address: "0x9999999999999999999999999999999999999999",
+    network_profile: "live-mainnet",
     settlement_tx_hash:
       "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     escrow_registration_tx_hash:
@@ -117,7 +119,8 @@ describe("seller job callbacks", () => {
       {
         sellerId,
         passportAgentId: "agent-seller-1",
-        passportSubject: "user_123"
+        passportSubject: "user_123",
+        networkProfile: "live-mainnet"
       },
       "salt"
     );

@@ -22,6 +22,11 @@ import {
 import { getServerEnv } from "@/lib/env";
 import { buildFingerprint } from "@/lib/fingerprint";
 import {
+  getNetworkProfile,
+  NetworkProfileConfigError,
+  type PaymentNetworkProfile
+} from "@/lib/network-profiles";
+import {
   createSettlingJob,
   deleteJob,
   deleteQuoteContext,
@@ -77,6 +82,7 @@ async function verifyPaymentForRequest(params: {
   quoteContext: NonNullable<Awaited<ReturnType<typeof loadQuoteContext>>>;
   verifyRequest: ReturnType<typeof parseVerifyRequestBody>;
   env: ReturnType<typeof getServerEnv>;
+  networkProfile: PaymentNetworkProfile;
   progress?: PaymentVerificationProgress;
 }): Promise<{
   mode: "mock" | "x402-escrow";
@@ -98,7 +104,7 @@ async function verifyPaymentForRequest(params: {
     const paymentPayload = decodeXPaymentHeader(params.xPaymentHeader);
     const verifyResponse = await verifyFacilitatorPayment({
       paymentPayload,
-      baseUrl: params.env.PIEVERSE_FACILITATOR_BASE_URL
+      baseUrl: params.networkProfile.facilitatorBaseUrl
     });
 
     console.info("Facilitator verify completed", {
@@ -118,7 +124,7 @@ async function verifyPaymentForRequest(params: {
 
     const settleResponse = await settleFacilitatorPayment({
       paymentPayload,
-      baseUrl: params.env.PIEVERSE_FACILITATOR_BASE_URL
+      baseUrl: params.networkProfile.facilitatorBaseUrl
     });
 
     console.info("Facilitator settle completed", {
@@ -162,7 +168,7 @@ async function verifyPaymentForRequest(params: {
       paymentId: params.quoteContext.payment_id,
       buyerId: params.verifyRequest.payload.buyer_id,
       amountAtomic: params.quoteContext.amount_atomic,
-      rpcUrl: params.env.KITE_RPC_URL,
+      rpcUrl: params.networkProfile.rpcUrl,
       tokenAddress: params.quoteContext.payment_asset,
       escrowAddress: params.quoteContext.pay_to
     });
@@ -173,9 +179,9 @@ async function verifyPaymentForRequest(params: {
       sellerId: params.quoteContext.seller_id,
       amountAtomic: params.quoteContext.amount_atomic,
       settlementTxHash,
-      rpcUrl: params.env.KITE_RPC_URL,
+      rpcUrl: params.networkProfile.rpcUrl,
       escrowAddress: params.quoteContext.pay_to,
-      gatewayPrivateKey: params.env.GATEWAY_PRIVATE_KEY
+      gatewayPrivateKey: params.networkProfile.gatewayPrivateKey
     });
     if (params.progress) {
       params.progress.escrowRegistered = true;
@@ -191,7 +197,7 @@ async function verifyPaymentForRequest(params: {
     };
   }
 
-  if (params.env.ALLOW_MOCK_PAYMENTS !== "true") {
+  if (params.networkProfile.allowMockPayments !== "true") {
     throw new PaymentVerificationInputError(
       "X-PAYMENT header is required for production payment verification.",
       "X_PAYMENT_REQUIRED"
@@ -254,11 +260,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const requestedNetworkProfile =
+    verifyRequest.payload.network_profile ?? "live-mainnet";
   const recomputedFingerprint = buildFingerprint(
     {
       buyerId: verifyRequest.payload.buyer_id,
       capability: verifyRequest.payload.capability,
-      prompt: verifyRequest.payload.prompt
+      prompt: verifyRequest.payload.prompt,
+      networkProfile: requestedNetworkProfile
     },
     env.GATEWAY_SALT
   );
@@ -300,14 +309,32 @@ export async function POST(request: Request) {
     );
   }
 
-  if (quoteContext.pay_to.toLowerCase() !== env.ESCROW_CONTRACT_ADDRESS.toLowerCase()) {
+  let networkProfile: ReturnType<typeof getNetworkProfile>;
+
+  try {
+    networkProfile = getNetworkProfile(env, quoteContext.network_profile);
+  } catch (error) {
+    return internalServerErrorResponse(
+      "Missing Gateway network profile configuration for verify.",
+      "GATEWAY_CONFIG_MISSING",
+      {
+        code: error instanceof NetworkProfileConfigError ? error.code : undefined,
+        reason: error instanceof Error ? error.message : "Unknown config error."
+      }
+    );
+  }
+
+  if (
+    quoteContext.pay_to.toLowerCase() !==
+    networkProfile.escrowContractAddress.toLowerCase()
+  ) {
     return conflictResponse(
       "Quote escrow contract is no longer active. Request a fresh quote.",
       "QUOTE_ESCROW_MISMATCH"
     );
   }
 
-  if (!xPaymentHeader && env.ALLOW_MOCK_PAYMENTS !== "true") {
+  if (!xPaymentHeader && networkProfile.allowMockPayments !== "true") {
     return badRequestResponse(
       "X-PAYMENT header is required for production payment verification.",
       "X_PAYMENT_REQUIRED"
@@ -352,7 +379,10 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     try {
-      await setSellerIdleAfterExecution(quoteContext.seller_id);
+      await setSellerIdleAfterExecution(
+        quoteContext.seller_id,
+        quoteContext.network_profile
+      );
     } catch (releaseError) {
       console.error("Failed to release seller after settling job creation failure", {
         paymentId: quoteContext.payment_id,
@@ -390,9 +420,9 @@ export async function POST(request: Request) {
         const recovery = await recoverExcessEscrowPaymentToken({
           recipientAddress: activeQuoteContext.buyer_id,
           amountAtomic: activeQuoteContext.amount_atomic,
-          rpcUrl: env.KITE_RPC_URL,
+          rpcUrl: networkProfile.rpcUrl,
           escrowAddress: activeQuoteContext.pay_to,
-          gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+          gatewayPrivateKey: networkProfile.gatewayPrivateKey
         });
 
         console.error("Recovered unregistered escrow payment after verify failure", {
@@ -430,7 +460,10 @@ export async function POST(request: Request) {
     }
 
     try {
-      await setSellerIdleAfterExecution(activeQuoteContext.seller_id);
+      await setSellerIdleAfterExecution(
+        activeQuoteContext.seller_id,
+        activeQuoteContext.network_profile
+      );
     } catch (releaseError) {
       console.error("Failed to release seller after payment verification failure", {
         paymentId: activeQuoteContext.payment_id,
@@ -464,6 +497,7 @@ export async function POST(request: Request) {
       quoteContext,
       verifyRequest,
       env,
+      networkProfile,
       progress: verificationProgress
     });
   } catch (error) {
@@ -523,9 +557,9 @@ export async function POST(request: Request) {
         const refund = await executeEscrowGatewayAction({
           action: "refund",
           paymentId: finalizationQuoteContext.payment_id,
-          rpcUrl: env.KITE_RPC_URL,
+          rpcUrl: networkProfile.rpcUrl,
           escrowAddress: finalizationQuoteContext.pay_to,
-          gatewayPrivateKey: env.GATEWAY_PRIVATE_KEY
+          gatewayPrivateKey: networkProfile.gatewayPrivateKey
         });
 
         console.error("Refunded escrow payment after local job finalization failure", {
@@ -546,7 +580,10 @@ export async function POST(request: Request) {
     }
 
     try {
-      await setSellerIdleAfterExecution(finalizationQuoteContext.seller_id);
+      await setSellerIdleAfterExecution(
+        finalizationQuoteContext.seller_id,
+        finalizationQuoteContext.network_profile
+      );
     } catch (releaseError) {
       console.error("Failed to release seller after local job finalization failure", {
         paymentId: finalizationQuoteContext.payment_id,
@@ -622,6 +659,7 @@ export async function POST(request: Request) {
   const supabase = createServerSupabaseClient();
   const { error: eventError } = await supabase.from("events").insert({
     job_id: createdJob.id,
+    network_profile: quoteContext.network_profile,
     type: "PAID",
     message: `Payment ${quoteContext.payment_id} verified for seller ${quoteContext.seller_id}.`
   });

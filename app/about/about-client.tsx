@@ -21,8 +21,8 @@ const SECTIONS = [
     lead: "An Agent-to-Agent secondary market for AI compute.",
     body: [
       "QuotaDEX lets any LLM seller monetize idle quota the moment an agent needs it. Sellers register a capability and price; buyers discover, quote, and settle jobs with no middlemen and no manual API keys.",
-      "The MVP runs on a Gateway + Supabase + Redis + Escrow stack. Quote requests are fingerprinted and returned as HTTP x402 Payment Required. Production verification requires a Kite Passport x402 payment settled in Test USDT; once registered, the Gateway releases funds on job completion or refunds on failure. Every payment has an explorer-verifiable proof.",
-      "Current phase: Production testnet hardening. Primary payment route is Kite Passport/x402 into QuotaDEXEscrow on Kite Testnet; mainnet remains an environment switch."
+      "The MVP runs on a Gateway + Supabase + Redis + Escrow stack. Quote requests are fingerprinted and returned as HTTP x402 Payment Required. Live verification requires a Kite Passport x402 payment settled into the selected QuotaDEXEscrow profile; once registered, the Gateway releases funds on job completion or refunds on failure. Every payment has an explorer-verifiable proof.",
+      "Current phase: split Demo and Live profiles. Demo stays on Kite Testnet with Test USDT, while Live Mainnet uses Kite Mainnet USDC.e after the mainnet escrow is deployed."
     ]
   },
   {

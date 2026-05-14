@@ -1,4 +1,4 @@
-import { reserveSellerForQuote } from "@/lib/jobs";
+import { reserveSellerForQuote, setSellerIdleAfterExecution } from "@/lib/jobs";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
 vi.mock("@/lib/supabase", () => ({
@@ -27,7 +27,8 @@ describe("seller presence matching", () => {
       from: vi.fn(() => ({ select }))
     } as never);
 
-    await expect(reserveSellerForQuote("llama-3")).resolves.toBeNull();
+    await expect(reserveSellerForQuote("llama-3", "live-mainnet")).resolves.toBeNull();
+    expect(query.eq).toHaveBeenCalledWith("network_profile", "live-mainnet");
 
     expect(query.gte).toHaveBeenCalledWith(
       "last_heartbeat_at",
@@ -35,5 +36,37 @@ describe("seller presence matching", () => {
     );
 
     vi.useRealTimers();
+  });
+
+  it("releases only the seller row for the selected network profile", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { id: "0x5555555555555555555555555555555555555555" },
+      error: null
+    });
+    const query = {
+      eq: vi.fn(() => query),
+      select: vi.fn(() => ({
+        maybeSingle
+      }))
+    };
+    const update = vi.fn(() => query);
+
+    vi.mocked(createServerSupabaseClient).mockReturnValue({
+      from: vi.fn(() => ({ update }))
+    } as never);
+
+    await expect(
+      setSellerIdleAfterExecution(
+        "0x5555555555555555555555555555555555555555",
+        "live-mainnet"
+      )
+    ).resolves.toBe(true);
+
+    expect(query.eq).toHaveBeenCalledWith(
+      "id",
+      "0x5555555555555555555555555555555555555555"
+    );
+    expect(query.eq).toHaveBeenCalledWith("network_profile", "live-mainnet");
+    expect(query.eq).toHaveBeenCalledWith("status", "busy");
   });
 });

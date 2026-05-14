@@ -18,7 +18,7 @@ export type DashboardSummaryResponse = {
   settlement: {
     primary: "Kite x402 Escrow";
     fallback: "Mock fallback only";
-    future: "Mainnet env switch";
+    future: "Profile-based Live Mainnet switch";
   };
   updatedAt: string | null;
 };

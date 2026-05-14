@@ -4,7 +4,7 @@
 
 **The first decentralized AI compute marketplace — built for agents, settled on-chain.**
 
-QuotaDEX is an Agent-to-Agent (A2A) secondary market where any LLM seller can monetize idle quota and any autonomous agent can buy compute on demand — no API keys, no contracts, no human in the loop. Every job is quoted via HTTP 402, paid through Kite x402/Agent Passport, backed by a custom Escrow contract on Kite AI, and settled in Test USDT on Kite Testnet.
+QuotaDEX is an Agent-to-Agent (A2A) secondary market where any LLM seller can monetize idle quota and any autonomous agent can buy compute on demand — no API keys, no contracts, no human in the loop. Demo runs stay pinned to Kite Testnet + Test USDT; Live Agent runs are profile-based and use Kite Mainnet + USDC.e once the mainnet escrow is deployed.
 
 Part of the **AgentBazaar** vision: an open, accountable commerce layer for the autonomous-agent economy.
 
@@ -86,14 +86,15 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
      ┌───────▼──────────────┐
      │   Kite AI (EVM)      │
      │  QuotaDEXEscrow.sol  │
-     │  Test USDT payments  │
+     │ Demo Test USDT /     │
+     │ Live Mainnet USDC.e  │
      └──────────────────────┘
 ```
 
 **Key design decisions:**
 
 - `payment_id` and `job_id` are intentionally separate — payment identity is established at quote time, job identity at verify time.
-- `fingerprint` is reused as `payment_id` in the MVP, binding the exact request parameters to the on-chain escrow registration.
+- `fingerprint` is reused as `payment_id` in the MVP, binding the exact request parameters and `network_profile` to the on-chain escrow registration.
 - Supabase is the single source of truth for all formal state transitions.
 - Redis stores only short-lived quote context (TTL-bounded).
 - Seller state transitions flow exclusively through Gateway APIs.
@@ -158,7 +159,8 @@ docs/                 # Product spec, MVP rules, dev sequence, phase tracker
 | `POST` | `/api/v1/jobs/:id/fail`        | Seller signals failure; triggers `Escrow.refund`         |
 
 Seller job callbacks should use a Gateway seller session: call
-`/api/v1/sellers/session` with a verified Passport JWT, then include
+`/api/v1/sellers/session/challenge`, send the returned USDC bond with `kpass wallet send`,
+exchange the bond `tx_hash` at `/api/v1/sellers/session`, then include
 `Authorization: Bearer <seller_session_token>` on heartbeat, poll, start,
 complete, fail, and offline requests. Legacy EVM `seller_signature` callbacks
 remain available as a development fallback.
@@ -167,9 +169,11 @@ remain available as a development fallback.
 
 | Method | Path                           | Description                                   |
 | ------ | ------------------------------ | --------------------------------------------- |
-| `GET`  | `/api/v1/dashboard/summary`    | Aggregate stats (sellers, jobs, volume)       |
-| `GET`  | `/api/v1/dashboard/market`     | Active sellers and their capabilities         |
-| `GET`  | `/api/v1/dashboard/events`     | Recent job events feed                        |
+| `GET`  | `/api/v1/dashboard/summary?mode=demo` | Demo Testnet aggregate stats           |
+| `GET`  | `/api/v1/dashboard/summary?mode=live&network=testnet` | Live Testnet monitor stats |
+| `GET`  | `/api/v1/dashboard/summary?mode=live&network=mainnet` | Live Mainnet monitor stats |
+| `GET`  | `/api/v1/dashboard/market?...` | Active sellers and their capabilities for the selected profile |
+| `GET`  | `/api/v1/dashboard/events?...` | Recent job events feed for the selected profile |
 
 ---
 
@@ -192,12 +196,11 @@ GATEWAY_SALT=                           # Random secret used in fingerprint gene
 SELLER_SESSION_TTL_SECONDS=900          # Gateway seller session lifetime
 ALLOW_SELLER_SIGNATURE_AUTH=false      # Dev-only legacy EVM seller signatures
 
-# Kite AI / blockchain
+# Demo Kite AI / blockchain defaults
 KITE_NETWORK=kite-testnet
 KITE_CHAIN_ID=2368
 KITE_RPC_URL=https://rpc-testnet.gokite.ai
 KITE_EXPLORER_URL=https://testnet.kitescan.ai
-ESCROW_CONTRACT_ADDRESS=                # Deployed QuotaDEXEscrow address
 GATEWAY_PRIVATE_KEY=                    # Gateway wallet private key (NOT the contract's)
 
 # Kite Passport identity verification for seller sessions
@@ -209,7 +212,30 @@ PIEVERSE_FACILITATOR_BASE_URL=https://facilitator.pieverse.io
 KITE_PAYMENT_ASSET_ADDRESS=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63
 PAYMENT_TOKEN_DECIMALS=18
 PAYMENT_CURRENCY=USDT
+ESCROW_CONTRACT_ADDRESS=                # Existing Kite Testnet Test USDT escrow
 ALLOW_MOCK_PAYMENTS=false
+
+# Network profiles
+DEMO_ESCROW_CONTRACT_ADDRESS=           # Optional; defaults to ESCROW_CONTRACT_ADDRESS
+LIVE_TESTNET_PAYMENT_ASSET_ADDRESS=     # Future real-agent testnet USDC profile, if deployed
+LIVE_TESTNET_PAYMENT_CURRENCY=USDC
+LIVE_TESTNET_PAYMENT_TOKEN_DECIMALS=6
+LIVE_TESTNET_ESCROW_CONTRACT_ADDRESS=
+LIVE_MAINNET_KITE_NETWORK=kite-mainnet
+LIVE_MAINNET_KITE_CHAIN_ID=2366
+LIVE_MAINNET_KITE_RPC_URL=https://rpc.gokite.ai/
+LIVE_MAINNET_KITE_EXPLORER_URL=https://kitescan.ai
+LIVE_MAINNET_PAYMENT_ASSET_ADDRESS=0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e
+LIVE_MAINNET_PAYMENT_CURRENCY=USDC
+LIVE_MAINNET_PAYMENT_TOKEN_DECIMALS=6
+LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS=   # New mainnet QuotaDEXEscrow(gateway, USDC.e)
+
+# Seller bond / wallet proof for kpass seller sessions
+SELLER_BOND_AMOUNT=0.01                 # Base USDC bond before anti-replay dust
+SELLER_BOND_RECEIVER_ADDRESS=           # Optional; defaults to GATEWAY_PRIVATE_KEY wallet address
+SELLER_BOND_TOKEN_ADDRESS=              # Optional; defaults to selected profile payment token
+SELLER_BOND_TOKEN_SYMBOL=               # Optional; defaults to selected profile currency
+SELLER_BOND_TOKEN_DECIMALS=             # Optional; defaults to selected profile decimals
 
 # One-click Kite Testnet demo. These wallets spend and receive Test USDT only.
 BUYER_PRIVATE_KEY=
@@ -299,5 +325,6 @@ Local fallback: **Mock payments only when explicitly enabled**
 
 - **AgentBazaar** — the planned parent marketplace hosting multiple A2A verticals, all sharing the same quote-escrow-settle accountability layer.
 - **Kite AI** — the EVM-compatible chain used for on-chain settlement.
-- **Test USDT** — the current Kite Testnet escrow payment token.
+- **Test USDT** — the current Kite Testnet escrow payment token for the one-click Demo route.
+- **USDC.e** — the Kite Mainnet Live Agent payment token.
 - **x402** — the HTTP payment protocol used for machine-native payment negotiation.

@@ -43,6 +43,7 @@ export async function POST(request: Request) {
     .from("sellers")
     .select("id, passport_subject")
     .eq("id", seller.seller_id)
+    .eq("network_profile", seller.network_profile)
     .maybeSingle();
 
   if (readError) {
@@ -69,6 +70,7 @@ export async function POST(request: Request) {
     try {
       await assertValidSellerSession({
         sellerId: seller.seller_id,
+        expectedNetworkProfile: seller.network_profile,
         authorizationHeader: request.headers.get("authorization"),
         secret: gatewaySecret
       });
@@ -89,6 +91,7 @@ export async function POST(request: Request) {
     wallet_address: seller.wallet ?? seller.seller_id,
     capability: seller.capability,
     price_per_task: seller.price_per_task,
+    network_profile: seller.network_profile,
     status: "offline",
     last_heartbeat_at: null,
     updated_at: updatedAt
@@ -101,7 +104,8 @@ export async function POST(request: Request) {
     const { error } = await supabase
       .from("sellers")
       .update(sellerProfile)
-      .eq("id", seller.seller_id);
+      .eq("id", seller.seller_id)
+      .eq("network_profile", seller.network_profile);
 
     writeError = error;
   } else if (existingSellerRow) {
@@ -113,6 +117,7 @@ export async function POST(request: Request) {
         approval_status: "approved"
       })
       .eq("id", seller.seller_id)
+      .eq("network_profile", seller.network_profile)
       .is("passport_subject", null)
       .select("id")
       .maybeSingle();
@@ -154,6 +159,7 @@ export async function POST(request: Request) {
   }
 
   const { error: eventError } = await supabase.from("events").insert({
+    network_profile: seller.network_profile,
     type: "SELLER_REGISTERED",
     message: `Seller ${seller.seller_id} registered capability ${seller.capability}.`
   });
@@ -167,6 +173,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     status: "registered",
-    seller_id: seller.seller_id
+    seller_id: seller.seller_id,
+    network_profile: seller.network_profile
   });
 }

@@ -1,9 +1,12 @@
 import { internalServerErrorResponse } from "@/lib/errors";
-import { getDashboardSummary } from "@/lib/dashboard";
+import { getDashboardSummaryForScope } from "@/lib/dashboard";
+import { getDashboardScopeFromRequest } from "@/lib/network-profiles";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    return Response.json(await getDashboardSummary());
+    return Response.json(
+      await getDashboardSummaryForScope(getDashboardScopeFromRequest(request))
+    );
   } catch (error) {
     return internalServerErrorResponse(
       "Failed to load dashboard summary.",

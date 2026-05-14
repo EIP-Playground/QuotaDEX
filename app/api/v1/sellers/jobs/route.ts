@@ -9,10 +9,17 @@ import {
   assertValidSellerCallbackAuth,
   SellerCallbackSignatureError
 } from "@/lib/seller-callback-auth";
+import {
+  getNetworkProfile,
+  NetworkProfileConfigError,
+  parseNetworkProfileId,
+  type NetworkProfileId
+} from "@/lib/network-profiles";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
 type SellerJobsRequest = {
   seller_id: string;
+  network_profile: NetworkProfileId;
   seller_signature?: string;
   seller_signed_at?: string;
 };
@@ -61,6 +68,12 @@ function parseSellerJobsRequest(input: unknown): SellerJobsRequest {
 
   return {
     seller_id: readRequiredString(input, "seller_id"),
+    network_profile: parseNetworkProfileId(
+      typeof input.network_profile === "string"
+        ? input.network_profile.trim()
+        : undefined,
+      "live-mainnet"
+    ),
     seller_signature: readOptionalString(input, "seller_signature"),
     seller_signed_at: readOptionalString(input, "seller_signed_at")
   };
@@ -87,14 +100,19 @@ export async function POST(request: Request) {
   }
 
   let env: ReturnType<typeof getServerEnv>;
+  let networkProfile: ReturnType<typeof getNetworkProfile>;
 
   try {
     env = getServerEnv();
+    networkProfile = getNetworkProfile(env, jobsRequest.network_profile);
   } catch (error) {
     return internalServerErrorResponse(
       "Missing Gateway configuration for seller job polling.",
       "GATEWAY_CONFIG_MISSING",
-      { reason: error instanceof Error ? error.message : "Unknown config error." }
+      {
+        code: error instanceof NetworkProfileConfigError ? error.code : undefined,
+        reason: error instanceof Error ? error.message : "Unknown config error."
+      }
     );
   }
 
@@ -105,9 +123,10 @@ export async function POST(request: Request) {
       sellerId: jobsRequest.seller_id,
       signature: jobsRequest.seller_signature,
       signedAt: jobsRequest.seller_signed_at,
-      rpcUrl: env.KITE_RPC_URL,
+      rpcUrl: networkProfile.rpcUrl,
       authorizationHeader: request.headers.get("authorization"),
       gatewaySecret: env.GATEWAY_SALT,
+      expectedNetworkProfile: jobsRequest.network_profile,
       allowLegacySignatureAuth: env.ALLOW_SELLER_SIGNATURE_AUTH === "true"
     });
   } catch (error) {
@@ -129,6 +148,7 @@ export async function POST(request: Request) {
       "id, payment_id, status, payload, amount, currency, payment_mode, created_at, expires_at"
     )
     .eq("seller_id", jobsRequest.seller_id)
+    .eq("network_profile", jobsRequest.network_profile)
     .in("status", ["paid", "running"])
     .order("created_at", { ascending: true })
     .limit(10);
@@ -155,6 +175,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     seller_id: jobsRequest.seller_id,
+    network_profile: jobsRequest.network_profile,
     jobs
   });
 }

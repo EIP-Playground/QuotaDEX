@@ -31,11 +31,18 @@ describe("QuotaDEX agent skills", () => {
     expect(buyer).toMatch(/kpass agent:session execute/);
     expect(buyer).toMatch(/\/api\/v1\/jobs\/quote/);
     expect(buyer).toMatch(/\/api\/v1\/jobs\/verify/);
+    expect(buyer).toMatch(/"network_profile":"live-mainnet"/);
+    expect(buyer).toMatch(/--assets USDC/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/register/);
+    expect(seller).toMatch(/\/api\/v1\/sellers\/session\/challenge/);
+    expect(seller).toMatch(/kpass wallet send/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/session/);
     expect(seller).toMatch(/Authorization: Bearer \$SELLER_SESSION_TOKEN/);
     expect(seller).toMatch(/heartbeat/);
     expect(seller).toMatch(/\/api\/v1\/sellers\/jobs/);
+    expect(seller).toMatch(/"network_profile":"live-mainnet"/);
+    expect(seller).toMatch(/USDC/);
+    expect(seller).not.toMatch(/PASSPORT_JWT/);
     expect(seller).not.toMatch(/seller_signature/);
     expect(seller).not.toMatch(/action: poll/);
   });
