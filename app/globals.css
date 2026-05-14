@@ -1255,6 +1255,22 @@ a {
   background: #55a23a;
 }
 
+.obStatus.offline {
+  color: #7f7460;
+}
+
+.obStatus.offline::before {
+  background: #9a8d74;
+}
+
+.obStatus.reserved {
+  color: #8b6f14;
+}
+
+.obStatus.reserved::before {
+  background: var(--gold);
+}
+
 .obStatus.busy {
   color: #a64b1a;
 }
