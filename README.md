@@ -4,7 +4,7 @@
 
 **The first decentralized AI compute marketplace — built for agents, settled on-chain.**
 
-QuotaDEX is an Agent-to-Agent (A2A) secondary market where any LLM seller can monetize idle quota and any autonomous agent can buy compute on demand — no API keys, no contracts, no human in the loop. Demo runs stay pinned to Kite Testnet + Test USDT; Live Agent runs are profile-based and use Kite Mainnet + USDC.e once the mainnet escrow is deployed.
+QuotaDEX is an Agent-to-Agent (A2A) secondary market where any LLM seller can monetize idle quota and any autonomous agent can buy compute on demand — no API keys, no bilateral paperwork, no human in the loop. The public production deployment runs at **https://quota-dex.vercel.app**. Demo runs stay pinned to Kite Testnet + Test USDT; Live Agent runs are profile-based and use Kite Mainnet + USDC.e once the mainnet escrow is configured.
 
 Part of the **AgentBazaar** vision: an open, accountable commerce layer for the autonomous-agent economy.
 
@@ -13,6 +13,7 @@ Part of the **AgentBazaar** vision: an open, accountable commerce layer for the 
 ## Table of Contents
 
 - [Why QuotaDEX](#why-quotadex)
+- [Live Demo and Hackathon Fit](#live-demo-and-hackathon-fit)
 - [How It Works](#how-it-works)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
@@ -28,13 +29,36 @@ Part of the **AgentBazaar** vision: an open, accountable commerce layer for the 
 
 Thousands of LLM instances sit idle between requests. Meanwhile, autonomous agents — research bots, reasoning pipelines, long-running tasks — need bursty compute with no credit card and no human approval flow.
 
-QuotaDEX solves this with three primitives:
+QuotaDEX solves this with four primitives:
 
 | Primitive | What it does |
 | --- | --- |
-| **x402 Quote** | Buyer requests compute; Gateway fingerprints the request, reserves a seller, and returns `402` with `payment_id` and price |
-| **x402 Escrow on Kite** | Buyer approves an x402 payment to the escrow contract; Gateway verifies facilitator settlement, then releases on completion or refunds on failure |
-| **A2A Settlement** | Seller receives the assigned job via Supabase Realtime, runs it, and callbacks trigger on-chain settlement |
+| **Capability Discovery** | Buyer Agents query exact quote-eligible capabilities before paying; dashboard market rows remain monitor-only |
+| **x402 Escrow on Kite** | Buyer approves an x402 payment to the escrow contract; Gateway verifies facilitator settlement, registers the escrow payment, then releases on completion or refunds on failure |
+| **Passport Seller Sessions** | Seller Agents prove wallet control with Kite Passport + a small USDC bond, then use short-lived Gateway sessions and renewal tokens |
+| **A2A Settlement** | Seller receives the assigned job via Supabase Realtime or polling, runs it, and authenticated callbacks trigger on-chain settlement |
+
+---
+
+## Live Demo and Hackathon Fit
+
+Public entry points:
+
+- **Production app:** <https://quota-dex.vercel.app>
+- **One-click Kite Testnet demo:** <https://quota-dex.vercel.app/demo>
+- **Live marketplace dashboard:** <https://quota-dex.vercel.app/marketplace>
+- **Buyer/Seller agent workflows:** `skills/quotadex-buyer/SKILL.md` and `skills/quotadex-seller/SKILL.md`
+- **Readiness checklist:** `docs/hackathon-readiness.md`
+
+Hackathon requirement coverage:
+
+| Requirement | QuotaDEX coverage | Current note |
+| --- | --- | --- |
+| AI agent performs a task and settles on Kite chain | Buyer Agent quotes/pays; Seller Agent executes; Gateway calls `QuotaDEXEscrow.release` or `refund` | Demo Testnet is publicly reproducible; Live Mainnet needs an online seller for the selected capability |
+| Executes paid actions | `X-PAYMENT` x402 escrow is the primary route; direct escrow transfer is a guarded fallback when x402 is blocked | Mock payments are local/dev only |
+| Production live demo | Vercel production app exposes `/demo`, `/marketplace`, and public API routes | Keep demo wallets funded before judging |
+| Kite attestations | Escrow registration, settlement, release, refund, seller address, and tx hashes link to Kitescan in Live Dashboard | Demo mock rows stay unlinked by design |
+| Functional UI / reproducibility | Web app plus CLI-like Agent Skills and local scripts | README documents both public and local routes |
 
 ---
 
@@ -43,6 +67,8 @@ QuotaDEX solves this with three primitives:
 ```text
 Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
      │                               │                               │
+     │──GET /buyers/capabilities────▶│                               │
+     │◀──exact live capabilities─────│                               │
      │──POST /jobs/quote────────────▶│                               │
      │◀──402 { payment_id, price }───│                               │
      │                               │                               │
@@ -56,11 +82,13 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
      │◀──job result──────────────────│                               │
 ```
 
-1. **Quote** — Buyer calls `/jobs/quote`. Gateway fingerprints the request, reserves an available seller, caches the quote context in Redis, and returns `402` with a price and `payment_id`.
-2. **Approve** — Buyer uses Kite Agent Passport to approve the returned x402 `accepts[0]`, whose `payTo` is the escrow contract.
-3. **Verify** — Buyer calls `/jobs/verify` with `X-PAYMENT`. Gateway verifies and settles through Pieverse, confirms the token Transfer into escrow, registers it on `QuotaDEXEscrow`, creates a formal `paid` job, and moves the seller to `busy`.
-4. **Execute** — Seller receives the job via Supabase Realtime, runs it, and calls back `start → complete` (or `fail`).
-5. **Settle** — On `complete`, Gateway calls `Escrow.release(paymentId)`. On `fail`, Gateway calls `Escrow.refund(paymentId)`.
+1. **Seller Session** — Seller registers offline by default, requests a bond challenge, sends the exact USDC bond with `kpass wallet send`, exchanges the tx hash for a Gateway seller session, and keeps that session online with heartbeats. Returning sellers use the private renewal token instead of paying another bond.
+2. **Discover** — Buyer calls `/buyers/capabilities?network_profile=live-mainnet` or `live-testnet` and chooses an exact live capability. If the list is empty or the requested capability is absent, the Buyer Agent stops instead of guessing.
+3. **Quote** — Buyer calls `/jobs/quote`. Gateway fingerprints the request, reserves an available seller, caches the quote context in Redis, and returns `402` with a price, `payment_id`, and x402 `accepts[0]`.
+4. **Approve** — Buyer uses Kite Agent Passport to approve the returned x402 payload, whose `payTo` is the active `QuotaDEXEscrow` contract.
+5. **Verify** — Buyer calls `/jobs/verify` with `X-PAYMENT`. Gateway verifies and settles through Pieverse, confirms the token Transfer into escrow, registers it on `QuotaDEXEscrow`, creates a formal `paid` job, and moves the seller to `busy`. If x402 is temporarily unavailable, a guarded direct escrow tx-hash fallback can be enabled per network profile.
+6. **Execute** — Seller receives the job via Supabase Realtime or polling, runs it, and calls back `start → complete` (or `fail`) with `Authorization: Bearer <seller_session_token>`.
+7. **Settle and audit** — On `complete`, Gateway calls `Escrow.release(paymentId)`. On `fail`, Gateway calls `Escrow.refund(paymentId)`. Live Dashboard links seller addresses and recent settlement tx hashes to the correct Kitescan network.
 
 ---
 
@@ -99,6 +127,9 @@ Buyer Agent                    Gateway (QuotaDEX)              Seller Agent
 - Redis stores only short-lived quote context (TTL-bounded).
 - Seller state transitions flow exclusively through Gateway APIs.
 - Gateway is the trusted escrow executor: it verifies x402 settlement receipts and calls contract release/refund.
+- Buyer Agents must use `/api/v1/buyers/capabilities` for exact inventory; `/dashboard/market` is observability, not a quoting source.
+- Seller Gateway sessions are Passport-bound, bond-backed, and renewable without repeated USDC transfers when the seller keeps its renewal token.
+- Dashboard mode/network selection persists across refreshes, and Live Dashboard links Kitescan addresses/transactions for auditability.
 
 ---
 
@@ -116,6 +147,10 @@ lib/
   env.ts              # Env validation
   fingerprint.ts      # Request fingerprinting (reused as payment_id)
   jobs.ts             # Job state helpers
+  network-profiles.ts # Demo Testnet, Live Testnet, Live Mainnet payment profiles
+  passport-auth.ts    # Kite Passport JWT verification helpers
+  seller-bond.ts      # Seller wallet-proof bond challenge helpers
+  seller-session.ts   # Short-lived Gateway seller session tokens
   sellers.ts          # Seller reservation + state transitions
   redis.ts            # Quote context cache
   supabase.ts         # DB client
@@ -142,7 +177,8 @@ docs/                 # Product spec, MVP rules, dev sequence, phase tracker
 
 | Method | Path                           | Description                                   |
 | ------ | ------------------------------ | --------------------------------------------- |
-| `POST` | `/api/v1/sellers/register`     | Register a seller with a capability and price |
+| `POST` | `/api/v1/sellers/register`     | Register a seller with a capability and price; production sellers start offline until authenticated |
+| `POST` | `/api/v1/sellers/session/challenge` | Create or reuse a Passport-bound seller bond challenge |
 | `POST` | `/api/v1/sellers/session`      | Exchange verified Passport identity for a short-lived Gateway seller session |
 | `POST` | `/api/v1/sellers/heartbeat`    | Mark an authenticated seller session as `idle` / online |
 | `POST` | `/api/v1/sellers/offline`      | Mark an authenticated seller session as offline |
@@ -168,12 +204,21 @@ capability-level inventory only; it does not expose seller selection.
 | `POST` | `/api/v1/jobs/:id/complete`    | Seller signals completion; triggers `Escrow.release`     |
 | `POST` | `/api/v1/jobs/:id/fail`        | Seller signals failure; triggers `Escrow.refund`         |
 
-Seller job callbacks should use a Gateway seller session: call
-`/api/v1/sellers/session/challenge`, send the returned USDC bond with `kpass wallet send`,
-exchange the bond `tx_hash` at `/api/v1/sellers/session`, then include
+Seller job callbacks should use a Gateway seller session: register with the
+seller Passport payer address, call `/api/v1/sellers/session/challenge`, send
+the returned USDC bond with `kpass wallet send`, exchange the bond `tx_hash` at
+`/api/v1/sellers/session`, then include
 `Authorization: Bearer <seller_session_token>` on heartbeat, poll, start,
-complete, fail, and offline requests. Legacy EVM `seller_signature` callbacks
-remain available as a development fallback.
+complete, fail, and offline requests. Keep the returned
+`seller_renewal_token` in a local secret store; returning sellers can renew
+sessions without another bond when the wallet and agent id are unchanged.
+Legacy EVM `seller_signature` callbacks remain available as a development
+fallback.
+
+For Buyer payments, `X-PAYMENT` is the production path. The
+`direct-escrow` fallback accepts only an exact transfer tx hash into the active
+escrow and must be explicitly enabled with the profile-specific
+`*_ALLOW_DIRECT_ESCROW_PAYMENTS=true` flag.
 
 ### Dashboard
 
@@ -182,7 +227,7 @@ remain available as a development fallback.
 | `GET`  | `/api/v1/dashboard/summary?mode=demo` | Demo Testnet aggregate stats           |
 | `GET`  | `/api/v1/dashboard/summary?mode=live&network=testnet` | Live Testnet monitor stats |
 | `GET`  | `/api/v1/dashboard/summary?mode=live&network=mainnet` | Live Mainnet monitor stats |
-| `GET`  | `/api/v1/dashboard/market?...` | Live Dashboard monitor rows, top sellers, and recent settlements; not Buyer Agent inventory |
+| `GET`  | `/api/v1/dashboard/market?...` | Live Dashboard monitor rows, top sellers, recent settlements, and Kitescan-linkable seller/tx data; not Buyer Agent inventory |
 | `GET`  | `/api/v1/dashboard/events?...` | Recent job events feed for the selected profile |
 
 ---
@@ -203,6 +248,7 @@ UPSTASH_REDIS_REST_TOKEN=
 
 # Gateway config — keep server-side only
 GATEWAY_SALT=                           # Random secret used in fingerprint generation
+GATEWAY_PUBLIC_BASE_URL=http://localhost:3000
 SELLER_SESSION_TTL_SECONDS=900          # Gateway seller session lifetime
 ALLOW_SELLER_SIGNATURE_AUTH=false      # Dev-only legacy EVM seller signatures
 
@@ -297,27 +343,41 @@ cat skills/quotadex-seller/SKILL.md
 Production verification requires `X-PAYMENT` by default. Set `ALLOW_MOCK_PAYMENTS=true` only for local demos. Set `LIVE_MAINNET_ALLOW_DIRECT_ESCROW_PAYMENTS=true` only as a temporary fallback while Kite discovery allowlisting is unavailable; this accepts an exact plain USDC transfer tx hash into the active escrow.
 Production seller callbacks require a Gateway seller session token by default. Set `ALLOW_SELLER_SIGNATURE_AUTH=true` only for local legacy EVM seller workers.
 
+To run a real seller agent against production, follow
+`skills/quotadex-seller/SKILL.md`. To run a real buyer agent, follow
+`skills/quotadex-buyer/SKILL.md`. The local `scripts/` helpers are useful for
+controlled development, but the Agent Skills are the public, reproducible
+hackathon workflow.
+
 ---
 
 ## Current Status
 
-### Phase 8 — Demo Hardening
+### Phase 9 — Hackathon Demo Ready
 
 | Area                                                | Status          |
 | --------------------------------------------------- | --------------- |
 | Gateway skeleton (Next.js App Router)               | Done            |
 | Supabase schema (sellers, jobs, events)             | Done            |
-| Seller lifecycle (register / heartbeat / offline)   | Done            |
-| Quote + fingerprint + Redis cache                   | Done            |
+| Seller lifecycle (register / bond challenge / session / heartbeat / offline) | Done |
+| Quote + capability discovery + fingerprint + Redis cache | Done        |
 | Verify (Kite x402 + escrow registration)            | Done            |
 | Seller worker script                                | Done            |
 | Buyer demo script                                   | Done            |
 | Custom Escrow on Kite (x402 register / release / refund) | Done       |
-| Mock E2E end-to-end pass                            | Done            |
+| Direct escrow fallback for blocked x402 paths       | Done            |
+| Live Dashboard profiles, persisted selection, seller statuses, recent settlements | Done |
+| Kitescan links for Live seller addresses and settlement tx hashes | Done |
 | Passport Skills for Buyer and Seller agents         | Done            |
+| Public Vercel app and one-click Kite Testnet demo   | Done            |
 
 Primary payment route: **Kite x402 → QuotaDEXEscrow → Seller/Buyer**
+Guarded fallback: **Exact direct escrow transfer tx hash when explicitly enabled**
 Local fallback: **Mock payments only when explicitly enabled**
+
+Before judging, keep at least one Live seller online for the target capability
+if demonstrating the real-agent Live Mainnet route. The one-click Demo Testnet
+route remains the public fallback for an end-to-end Kite settlement proof.
 
 ---
 
@@ -325,11 +385,16 @@ Local fallback: **Mock payments only when explicitly enabled**
 
 - [x] Pieverse Facilitator integration (`X-PAYMENT` header flow)
 - [x] Agent Passport workflow for Buyer and Seller agents
+- [x] Production `X-PAYMENT` verification into Kite escrow
+- [x] Seller bond challenge and renewal-token session flow
+- [x] Buyer capability discovery endpoint
+- [x] Profile-based Live Testnet / Live Mainnet dashboard
+- [x] Kitescan audit links for Live rows and settlements
+- [ ] Keep a live seller pool online for public judging windows
+- [ ] Capture and publish the final demo video
 - [ ] Kite MCP integration
-- [ ] Real x402 payment header (production)
 - [ ] Buyer SDK
 - [ ] Seller SDK
-- [ ] Dashboard (web UI for analytics + job history)
 - [ ] AgentBazaar parent marketplace (multi-vertical)
 
 ---
@@ -341,3 +406,4 @@ Local fallback: **Mock payments only when explicitly enabled**
 - **Test USDT** — the current Kite Testnet escrow payment token for the one-click Demo route.
 - **USDC.e** — the Kite Mainnet Live Agent payment token.
 - **x402** — the HTTP payment protocol used for machine-native payment negotiation.
+- **Kitescan** — the block explorer used for Live seller address and settlement transaction attestations.

@@ -3,6 +3,8 @@
 > 日期：2026-04-08
 > 目的：作为当前仓库接手后的 MVP 实施边界与开发共识，优先保证 Happy Path 跑通，并为后续扩展保留清晰边界。
 
+> **2026-05-15 状态更新：** 本文仍可作为架构边界参考，但支付与身份实现已升级：生产主路径为 `Kite x402 -> Pieverse verify/settle -> QuotaDEXEscrow register/release/refund`，Seller callback 默认使用 Passport-bound Gateway session，Buyer Agent 必须先用 capability discovery 获取精确能力，Live Dashboard 提供 Kitescan audit links。当前权威入口请以 `README.md`、`README.zh.md` 和 `docs/hackathon-readiness.md` 为准。
+
 ## 1. 总体目标
 
 1. 当前阶段只做黑客松 MVP，优先跑通 Happy Path，不优先做完整开放平台能力。
