@@ -4,6 +4,8 @@
 > 目的：作为当前仓库的 MVP 开发顺序说明，帮助团队成员和 AI 在正式编码前先统一实施路径。
 > 配套文档：`docs/mvp-rules(swen).md`
 
+> **2026-05-15 状态更新：** 本文是早期实施顺序记录。PR #4-#16 已完成 `X-PAYMENT` 生产验证、Kite Passport Buyer/Seller workflows、seller bond session renewal、buyer capability discovery、network profiles、Live Dashboard 与 Kitescan audit links。当前开发/演示入口请以 `README.md`、`README.zh.md`、`docs/hackathon-readiness.md` 和 `skills/` 为准。
+
 ## 1. 先说清楚：这里的 SDK 是什么意思
 
 1. `SDK` 就是 `Software Development Kit`。
@@ -337,18 +339,20 @@ Redis 只做两件事：
 
 ## 12. Phase 8：Demo Hardening
 
+> 2026-05-15：Phase 8 已完成。当前主路线已升级为 `Kite x402 + QuotaDEXEscrow`，并补齐 Passport Agent workflows、Live Dashboard 与 Kitescan proof。
+
 ### 为什么要插入这一阶段
 
 1. 现在离 demo 更近的问题，不是再扩协议，而是把可演示的主循环做稳
-2. 当前真正可反复验证的主支付路线是自定义 Escrow，不是 Facilitator live validation
-3. 所以在任何产品化动作之前，先把 Escrow 主路线的 demo 闭环打磨好更合理
+2. 当前真正可反复验证的主支付路线是 `X-PAYMENT -> escrow registration -> release/refund`
+3. 所以在任何产品化动作之前，先把 x402 Escrow 主路线的 demo 闭环打磨好更合理
 
 ### 这一阶段要做什么
 
-1. 锁定支付叙事：`Escrow = primary route`
-2. 保持 `Mock = stable fallback`
-3. 反复跑通 Escrow 主路线
-4. 准备 explorer proof / receipt / status 展示
+1. 锁定支付叙事：`Kite x402 + Escrow = primary route`
+2. 保持 `direct-escrow = guarded fallback`，`Mock = local fallback`
+3. 反复跑通 Escrow registration / release / refund
+4. 准备 Kitescan proof / receipt / status 展示
 5. 收紧 demo loop，确保 2 分钟内能讲清楚
 
 ### 这一阶段的本质
@@ -356,23 +360,23 @@ Redis 只做两件事：
 1. 不继续扩协议分叉
 2. 而是把当前能展示、能验证、能说服人的单循环做顺
 
-## 13. Future Plan：Pieverse Facilitator / Agent Passport / SDK / Dashboard
+## 13. 当前 Hackathon Demo Ready / 后续 Future Plan
 
-### 为什么移入 Future Plan
+### 当前已完成
 
-1. Facilitator live validation 依赖外部访问条件
-2. SDK 与 Dashboard 都属于 demo 之后的产品化工作
-3. 当前如果继续把这些挂在主线，会稀释 demo 交付焦点
+1. Pieverse facilitator `X-PAYMENT` verify/settle
+2. Agent Passport Buyer/Seller workflows
+3. Seller bond challenge 与 renewal-token session
+4. Buyer capability discovery
+5. Demo/Live Dashboard 与 Kitescan links
 
 ### 以后再做什么
 
-1. 获取 Kite Portal access
-2. 准备可用的 MCP-capable client
-3. 跑 `get_payer_addr`
-4. 跑 `approve_payment`
-5. 用真实 `X-PAYMENT` 补做 facilitator live validation
-6. 提炼 `buyer-sdk / seller-sdk`
-7. 补 `Dashboard + Stability`
+1. 评审窗口保持 Live Seller pool 在线
+2. 录制最终 demo video
+3. Kite MCP integration
+4. 提炼 `buyer-sdk / seller-sdk`
+5. AgentBazaar parent marketplace
 
 ## 14. 当前最重要的里程碑
 

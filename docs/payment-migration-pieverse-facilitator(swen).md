@@ -4,32 +4,39 @@
 > 目的：记录未来如何把当前 QuotaDEX 从自定义 Escrow 主路线扩展到更贴近 Kite 官方推荐的 `x402 + Pieverse Facilitator` 模式。
 > 适用范围：Future Plan，不属于当前 demo 主线。
 
+> **2026-05-15 状态更新：** PR #4-#16 已经把这份 Future Plan 的核心内容推进为当前实现：生产路径现在是 `X-PAYMENT -> Pieverse verify/settle -> QuotaDEXEscrow.registerFacilitatorPayment -> release/refund`，Buyer/Seller Agent 使用 Kite Passport workflow，Live Dashboard 按 Demo Testnet / Live Testnet / Live Mainnet profile 展示，并为 Live seller address 与 settlement tx hash 链到 Kitescan。本文下方保留历史迁移思路；当前权威入口请以 `README.md`、`README.zh.md`、`skills/quotadex-buyer/SKILL.md`、`skills/quotadex-seller/SKILL.md` 和 `docs/hackathon-readiness.md` 为准。
+
 ## 0. 当前状态
 
-截至当前仓库进度，下面这些 Facilitator 接入准备项已经完成：
+截至 2026-05-15，下面这些 Facilitator/Passport 接入项已经完成：
 
 1. 已新增 `lib/chain/facilitator.ts`
 2. `quote` 已新增 x402 风格的 `accepts`
 3. facilitator 专用环境变量已加入：
    - `PIEVERSE_FACILITATOR_BASE_URL`
    - `KITE_PAYMENT_ASSET_ADDRESS`
-   - `GATEWAY_MERCHANT_WALLET`
+   - `GATEWAY_PUBLIC_BASE_URL`
+   - profile-specific Live Testnet / Live Mainnet payment config
 4. `verify` 已支持 `X-PAYMENT -> facilitator verify -> facilitator settle`
-5. `buyer-demo` 已支持 facilitator 模式：
+5. `verify` 已支持 settlement receipt 校验、escrow registration、direct-escrow guarded fallback
+6. Buyer Agent Skill 已支持 capability discovery、quote、x402 approve/verify、direct fallback
+7. Seller Agent Skill 已支持 Passport setup、seller bond challenge、session renewal、heartbeat、poll/process loop
+8. Live Dashboard 已支持 profile switching、seller status、recent settlements、Kitescan audit links
+9. `buyer-demo` 已支持 facilitator 模式：
    - `BUYER_PAYMENT_MODE=facilitator`
    - `BUYER_X_PAYMENT=<real X-PAYMENT>`
 
-当前还未完成的是：
+当前仍需要演示运营层面确认的是：
 
-1. 获取真实 `X-PAYMENT` 并做 live validation
-2. 仅在验证通过后，再决定是否收缩旧 mock / Escrow 路径
+1. 评审窗口保持至少一个 Live Seller 在线，并确认目标 capability 出现在 `/api/v1/buyers/capabilities`
+2. 若展示 Live Mainnet，确认 `LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS` 与 USDC.e profile 已配置
+3. 保持 `/demo` 钱包有 Kite Testnet gas 与 Test USDT，作为公开可复现 fallback
 
 已移入 Future Plan 的外部验证项：
 
-1. 获取 Kite Portal access
-2. 准备可用的 MCP-capable client
-3. 跑通 `approve_payment` 并拿到真实 `X-PAYMENT`
-4. 用真实 `X-PAYMENT` 补做 facilitator E2E
+1. Kite MCP integration
+2. Buyer SDK / Seller SDK
+3. AgentBazaar 多垂直父级市场
 
 ## 1. 为什么未来仍然要集成
 
@@ -176,12 +183,13 @@ Future Plan 里的支付扩展路线应切到：
 
 1. <https://docs.gokite.ai/kite-agent-passport/service-provider-guide>
 
-这意味着当前文档和环境变量里写的 `PYUSD`，需要为比赛主路径重新评估。
+这意味着早期文档和环境变量里写的 `PYUSD` 已被比赛主路径替换。
 
 结论：
 
-1. **如果目标是贴官方推荐标准，优先切到官方测试 token**
-2. `PYUSD` 可以保留为 QuotaDEX 自定义模式的历史方案或后续模式
+1. Demo Testnet 使用 Kite Testnet Test USDT
+2. Live Mainnet 使用 USDC.e / USDC
+3. `PYUSD` 只作为早期历史方案保留在旧记录里，不再是当前演示口径
 
 ### 4.3 放款与退款逻辑
 
@@ -278,7 +286,8 @@ Future Plan 里的支付扩展路线应切到：
 当前：
 
 1. mock 模式直接造 `tx_hash`
-2. chain 模式直接 `approve + deposit`
+2. facilitator 模式提交真实 `X-PAYMENT`
+3. direct-escrow fallback 由 Buyer Skill 手动控制，不在脚本里自动化
 
 迁移后：
 
@@ -350,11 +359,11 @@ Future Plan 里的支付扩展路线应切到：
    - 默认 `https://facilitator.pieverse.io`
 
 2. `KITE_PAYMENT_ASSET_ADDRESS`
-   - 当前推荐填官方测试 token 地址
+   - Demo profile 使用 Test USDT；Live Mainnet 使用 USDC.e
 
-3. `GATEWAY_MERCHANT_WALLET`
-   - 用于 `payTo`
-   - 如果能从 `GATEWAY_PRIVATE_KEY` 推导，也可不单独存
+3. `ESCROW_CONTRACT_ADDRESS` / `LIVE_MAINNET_ESCROW_CONTRACT_ADDRESS`
+   - 用于 x402 `payTo`
+   - Gateway 钱包只负责注册、release、refund；收款目标是 Escrow 合约
 
 ## 8. 推荐的分步迁移顺序
 

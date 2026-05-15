@@ -4,6 +4,8 @@
 > 目的：定义 QuotaDEX 当前业务前端页面的需求边界，并为未来接入 AgentBazaar Marketplace 预留清晰的信息架构。
 > 适用范围：当前仓库的人类可见业务前端，不包含 SDK、合约、Gateway API 细节实现。
 
+> **2026-05-15 状态更新：** 当前前端已经包含公开 landing、Demo Testnet `/demo`、Marketplace Dashboard `/marketplace`、Demo/Live Testnet/Live Mainnet profile switching、持久化 dashboard selection、真实 seller statuses、top sellers、recent settlements、event feed，以及 Live mode 下的 Kitescan seller/tx audit links。本文保留早期需求边界；当前演示状态请以 `README.md`、`README.zh.md` 与 `docs/hackathon-readiness.md` 为准。
+
 ## 1. 产品关系与范围
 
 ### 1.1 产品关系
@@ -190,8 +192,8 @@ QuotaDEX / AgentBazaar 前端更适合替换成：
 
 2. Product Snapshot 区
    - 结算链：Kite AI
-   - 结算币种：PYUSD
-   - 支付方式：Escrow
+   - 结算币种：Demo Test USDT / Live USDC
+   - 支付方式：Kite x402 + Escrow
    - 交付方式：A2A + Realtime
    - 主要能力：二级 AI quota 撮合
 

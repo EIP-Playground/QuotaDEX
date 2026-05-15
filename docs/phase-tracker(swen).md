@@ -6,11 +6,15 @@
 > - `docs/mvp-rules(swen).md`
 > - `docs/development-order(swen).md`
 
-当前：`Phase 8 / Step 2` `反复跑通 Escrow 主路线并补 explorer proof`
-Future Plan：`Pieverse Facilitator / Agent Passport / Kite MCP / real X-PAYMENT / SDK / Dashboard`
+> **2026-05-15 状态更新：** 这份阶段图记录的是早期开发路线。PR #4-#16 已完成 `Kite x402 + QuotaDEXEscrow`、Kite Passport Buyer/Seller workflows、seller bond session、network profiles、buyer capability discovery、direct escrow fallback、Live Dashboard、Kitescan audit links。当前权威状态请以 `README.md`、`README.zh.md` 与 `docs/hackathon-readiness.md` 为准。
 
-最近验收：`Mock E2E passed`
-- `quote -> verify(mock) -> seller done -> buyer final result`
+当前：`Phase 9` `Hackathon demo ready`
+剩余运营事项：`保持 Live Seller 在线 / 录制最终 demo video / 如展示主网则确认 mainnet escrow env`
+
+最近验收：
+- `quote -> X-PAYMENT/direct escrow verify -> escrow registration -> seller done -> release/refund proof`
+- `Demo / Live Testnet / Live Mainnet dashboard profiles`
+- `Buyer capability discovery + Seller Passport session renewal`
 
 ## 1. 路径图
 
@@ -39,10 +43,13 @@ Future Plan：`Pieverse Facilitator / Agent Passport / Kite MCP / real X-PAYMENT
 [Phase 7 Custom Escrow real-chain primary route | deposit / receipt / release / refund] DONE
         |
         v
-[Phase 8 Demo Hardening | escrow / fallback / receipt / explorer proof] NEXT
+[Phase 8 Demo Hardening | escrow / fallback / receipt / explorer proof] DONE
         |
         v
-[Future Plan | facilitator / agent passport / sdk / dashboard]
+[Phase 9 Hackathon Demo Ready | x402 / passport / dashboard / Kitescan proof] CURRENT
+        |
+        v
+[Future Plan | Kite MCP / SDK / AgentBazaar]
 ```
 
 ## 2. 状态图例
@@ -285,8 +292,8 @@ Future Plan：`Pieverse Facilitator / Agent Passport / Kite MCP / real X-PAYMENT
 已完成内容：
 
 1. `QuotaDEXEscrow.sol`
-2. `approve + deposit` buyer flow
-3. `verify` 真实 receipt 校验
+2. `X-PAYMENT -> facilitator verify/settle -> escrow registration`
+3. `direct-escrow` fallback 真实 receipt 校验
 4. `complete -> release`
 5. `fail -> refund`
 
@@ -298,103 +305,106 @@ Future Plan：`Pieverse Facilitator / Agent Passport / Kite MCP / real X-PAYMENT
 
 ### Phase 8：Demo Hardening
 
-状态：`NEXT`
+状态：`DONE`
 
 关键词：`escrow` `fallback` `receipt` `explorer` `demo loop`
 
-步骤进度：`1/4 done`
+步骤进度：`4/4 done`
 
 步骤清单：
 
-- `✓` Step 1: 锁定主支付路线叙事为 `Escrow`
-- `○` Step 2: 反复跑通 Escrow 主路线并补 explorer proof
-- `○` Step 3: 收紧 result / receipt / status 展示
-- `○` Step 4: 准备 2 分钟内可讲清的单循环 demo
+- `✓` Step 1: 锁定主支付路线叙事为 `Kite x402 + QuotaDEXEscrow`
+- `✓` Step 2: 跑通 escrow registration / release / refund proof
+- `✓` Step 3: 收紧 Dashboard result / receipt / status 展示
+- `✓` Step 4: 准备公开 `/demo` 与 `/marketplace` 演示路径
 
 目标：
 
-- 把当前可演示的 Escrow 主路线打磨成一个清晰、可验证、可反复演示的 demo loop
+- 把当前可演示的 Escrow 主路线打磨成一个清晰、可验证、可反复演示的 demo loop，并补齐黑客松要求的公开 UI、Agent workflow 与 Kite attestations
 
-进入 Phase 8 前的最新验收结果：
+Phase 8 后的最新验收结果：
 
-- 本地 `Mock E2E` 已通过
-- `buyer-demo` 可以拿到最终结果
-- `seller-worker` 已补上 Realtime missed insert fallback
+- 生产 app 已公开部署到 Vercel
+- `/demo` 可作为 Kite Testnet controlled E2E proof
+- `/marketplace` 支持 Demo / Live Testnet / Live Mainnet profile
+- Live Dashboard 展示真实 seller status、24h released volume、recent settlements，并链接 Kitescan
+- Buyer/Seller Skills 覆盖 Passport/x402、seller bond、renewal token、foreground poll/process runtime loop
 
 注意：
 
-- `Escrow` 是当前主支付路线
-- `Mock` 继续作为稳定 fallback
-- 当前 demo 重点是一个 coherent loop，不是展示所有支付分支
-- `Pieverse Facilitator` 不再属于当前主线，已移入 Future Plan
+- `Kite x402 -> QuotaDEXEscrow` 是当前主支付路线
+- `direct-escrow` 是 x402 受阻时显式开启的临时 fallback
+- `Mock` 只作为本地开发 fallback
+- 评审窗口需要保持目标 capability 的 Live Seller 在线，或使用 `/demo` 作为公开可复现 fallback
 
-### Future Plan：Pieverse Facilitator / Agent Passport / SDK / Dashboard
+### Phase 9：Hackathon Demo Ready
 
-状态：`LATER`
+状态：`CURRENT`
 
-关键词：`facilitator` `Agent Passport` `Kite MCP` `SDK` `Dashboard`
+关键词：`x402` `Agent Passport` `seller bond` `Dashboard` `Kitescan`
 
 待办：
 
-- `○` 申请并获取 Kite Portal invite / access
-- `○` 准备一个可用的 MCP-capable client 并完成 OAuth
-- `○` 跑通 `get_payer_addr`
-- `○` 跑通 `approve_payment` 并拿到真实 `X-PAYMENT`
-- `○` 用真实 `X-PAYMENT` 补做 facilitator live validation
-- `○` 在 demo 之后再决定是否提炼 `buyer-sdk / seller-sdk`
-- `○` 在 demo 之后再决定是否补 `Dashboard + Stability`
+- `✓` Buyer capability discovery
+- `✓` Seller Passport session + bond renewal
+- `✓` Production `X-PAYMENT` verify/settle into escrow
+- `✓` Direct escrow fallback docs
+- `✓` Live Dashboard + Kitescan links
+- `○` 保持 Live Seller pool 在线
+- `○` 录制最终 demo video
+- `○` 视评审重点确认 Live Mainnet escrow env
 
 说明：
 
-- 这部分不再阻塞当前 demo 主线
-- 它依赖外部访问条件与后续产品化安排
-- 当前先从主线移出，避免分散 demo 交付焦点
+- 这部分对应当前黑客松演示口径
+- `docs/hackathon-readiness.md` 是评审对照表
+- README 是公开复现入口
 
-### Phase 10：Dashboard + Stability
+### Future Plan：Kite MCP / SDK / AgentBazaar
 
 状态：`LATER`
 
-关键词：`Dashboard` `events` `timeout` `refund` `retry`
+关键词：`Kite MCP` `SDK` `AgentBazaar` `stability`
 
 步骤进度：`0/4 done`
 
 步骤清单：
 
-- `○` Step 1: Dashboard 事件流
-- `○` Step 2: seller 状态展示
-- `○` Step 3: 超时处理
-- `○` Step 4: 退款与重试
+- `○` Step 1: Kite MCP integration
+- `○` Step 2: buyer-sdk / seller-sdk
+- `○` Step 3: AgentBazaar parent marketplace
+- `○` Step 4: production-grade governance / monitoring / policy hardening
 
 目标：
 
-- 加展示、监控和稳定性
+- 从黑客松 demo 进入长期产品化
 
 需要完成的事：
 
-1. Dashboard 事件流
-2. seller 状态展示
-3. 超时处理
-4. 退款与重试
+1. Kite MCP integration
+2. SDK 产品化封装
+3. 多垂直 marketplace
+4. 生产治理、监控和策略加固
 
 ## 4. 现在最该做什么
 
 如果你现在准备继续开发，默认动作就是：
 
-1. 打开 `docs/mvp-rules(swen).md`
-2. 打开 `docs/development-order(swen).md`
-3. 按本文件进入 `Phase 8`
-4. 先把 Escrow 主路线 demo 打磨清楚，再决定是否展开 Future Plan
+1. 打开 `README.md` / `README.zh.md`
+2. 打开 `docs/hackathon-readiness.md`
+3. 确认 `/demo` 与 `/marketplace` 生产入口可访问
+4. 如果要演示 Live Mainnet，先让目标 capability 的 Seller Agent 在线
 
 ## 5. 不该做什么
 
-在当前 demo hardening 阶段，不建议提前展开：
+在当前黑客松演示阶段，不建议提前展开：
 
 1. SDK 产品化封装
-2. Dashboard
-3. 复杂权限体系
+2. 复杂权限体系
+3. 大范围 UI 重构
 4. 复杂容错机制
 5. 生产级合约治理、多签和审计扩展
-6. 需要外部访问条件的 Facilitator live validation
+6. 与演示主线无关的协议分支
 
 原因：
 
@@ -408,8 +418,10 @@ Future Plan：`Pieverse Facilitator / Agent Passport / Kite MCP / real X-PAYMENT
 - 数据层已落完
 - Seller 生命周期已完成
 - `quote` 已完成
-- `verify(Mock)` 已完成
+- `verify(X-PAYMENT/direct escrow/mock)` 已完成
 - `Seller worker` 已完成
 - `Buyer demo` 已完成
-- `Custom Escrow real-chain primary route` 已完成
-- 当前进入 `Demo Hardening`
+- `Kite x402 + QuotaDEXEscrow` 主路线已完成
+- Buyer/Seller Passport Skills 已完成
+- Live Dashboard 与 Kitescan audit links 已完成
+- 当前进入 `Hackathon Demo Ready`
